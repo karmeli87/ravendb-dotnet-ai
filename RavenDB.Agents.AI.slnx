@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/RavenDB.Agents.AI.AgentSample/RavenDB.Agents.AI.AgentSample.csproj" />
+    <Project Path="samples/RavenDB.Agents.AI.DealDesk/RavenDB.Agents.AI.DealDesk.csproj" />
+    <Project Path="samples/RavenDB.Agents.AI.Sample/RavenDB.Agents.AI.Sample.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/RavenDB.Agents.AI/RavenDB.Agents.AI.csproj" />
+    <Project Path="src/RavenDB.Extensions.VectorData/RavenDB.Extensions.VectorData.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/RavenDB.Agents.AI/">
+    <Project Path="tests/RavenDB.Agents.AI/RavenDB.Agents.AI.Tests/RavenDB.Agents.AI.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/RavenDB.Extensions.VectorData/">
+    <Project Path="tests/RavenDB.Extensions.VectorData/RavenDB.Extensions.VectorData.ConformanceTests/RavenDB.Extensions.VectorData.ConformanceTests.csproj" />
+    <Project Path="tests/RavenDB.Extensions.VectorData/RavenDB.Extensions.VectorData.Tests/RavenDB.Extensions.VectorData.Tests.csproj" />
+  </Folder>
+</Solution>

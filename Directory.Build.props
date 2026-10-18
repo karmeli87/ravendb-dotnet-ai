@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- MAAI001: MAF experimental APIs (file store, skills). MEVD9001: VectorData provider services, used by every MEVD connector. -->
+    <NoWarn>$(NoWarn);MAAI001;MEVD9001</NoWarn>
+  </PropertyGroup>
+</Project>

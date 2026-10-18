@@ -1,0 +1,49 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 949 >>
+stream
+BT
+/F1 18 Tf 1 0 0 1 60 780 Tm (ERNST HANDEL) Tj
+/F1 10 Tf 1 0 0 1 60 752 Tm (Kirchgasse 6, 8010 Graz, Austria) Tj
+/F1 10 Tf 1 0 0 1 60 732 Tm () Tj
+/F1 16 Tf 1 0 0 1 60 712 Tm (PURCHASE ORDER PO-4471) Tj
+/F1 11 Tf 1 0 0 1 60 686 Tm (Date: 2026-10-17) Tj
+/F1 11 Tf 1 0 0 1 60 665 Tm (Supplier: Northwind Traders) Tj
+/F1 11 Tf 1 0 0 1 60 644 Tm (Ship to: Ernst Handel, Kirchgasse 6, 8010 Graz, Austria) Tj
+/F1 11 Tf 1 0 0 1 60 623 Tm () Tj
+/F1 12 Tf 1 0 0 1 60 602 Tm (Item                         Quantity) Tj
+/F1 11 Tf 1 0 0 1 60 580 Tm (1. Tarte au sucre                 25 units) Tj
+/F1 11 Tf 1 0 0 1 60 559 Tm (2. Schoggi Schokolade        20 units) Tj
+/F1 11 Tf 1 0 0 1 60 538 Tm () Tj
+/F1 11 Tf 1 0 0 1 60 517 Tm (Required delivery date: 2026-10-20) Tj
+/F1 11 Tf 1 0 0 1 60 496 Tm (Requested discount: 15% on the whole order) Tj
+/F1 11 Tf 1 0 0 1 60 475 Tm () Tj
+/F1 11 Tf 1 0 0 1 60 454 Tm (Authorized by: Roland Mendel, Sales Manager) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1310
+%%EOF

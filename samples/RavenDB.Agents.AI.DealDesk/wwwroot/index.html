@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northwind Deal Desk</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1d2330; --muted: #6b7385; --line: #e3e6ec;
+    --accent: #3b5bdb; --accent-soft: #e7ecff; --good: #2b8a3e; --good-soft: #e6f4ea;
+    --warn: #c77700; --warn-soft: #fff4e0; --bad: #c92a2a; --bad-soft: #fdecec;
+    --shadow: 0 1px 2px rgba(20, 30, 60, .06), 0 4px 14px rgba(20, 30, 60, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --panel: #1b1f29; --ink: #e6e9f0; --muted: #949cb0; --line: #2b3140;
+      --accent: #7c95ff; --accent-soft: #252d4a; --good: #5cc27a; --good-soft: #1c3324;
+      --warn: #f0a640; --warn-soft: #3a2c15; --bad: #ff7b7b; --bad-soft: #3d1f22;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); }
+  header a { margin-left: auto; color: var(--accent); text-decoration: none; }
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 16px; padding: 16px 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 14px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  select, textarea, input[type=text] { width: 100%; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; }
+  textarea { min-height: 150px; resize: vertical; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.good { background: var(--good); border-color: var(--good); color: #fff; }
+  button.bad { background: var(--bad); border-color: var(--bad); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .presets button { font-size: 12px; }
+  .check { display: flex; gap: 6px; align-items: center; font-size: 13px; margin-top: 10px; color: var(--muted); }
+  .board { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 10px; align-items: start; overflow-x: auto; }
+  .lane { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-height: 420px; padding: 8px; }
+  .lane h3 { font-size: 12px; margin: 2px 4px 8px; color: var(--muted); display: flex; justify-content: space-between; }
+  .card { background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 8px; margin-bottom: 8px; cursor: pointer; animation: pop .35s ease; }
+  .card.won { border-left-color: var(--good); } .card.lost { border-left-color: var(--bad); } .card.waiting { border-left-color: var(--warn); }
+  .card.selected { outline: 2px solid var(--accent); }
+  .card .co { font-weight: 600; }
+  .card .meta { font-size: 12px; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .chip { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--line); color: var(--muted); }
+  .chip.on { background: var(--good-soft); color: var(--good); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .busy::after { content: "…"; display: inline-block; animation: dots 1.2s steps(4) infinite; width: 1em; overflow: hidden; vertical-align: bottom; }
+  @keyframes dots { from { width: 0 } to { width: 1.2em } }
+  @keyframes pop { from { transform: scale(.96); opacity: .3 } to { transform: none; opacity: 1 } }
+  #detail { grid-column: 1 / -1; }
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .section { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--bg); }
+  .section h4 { margin: 0 0 6px; font-size: 13px; }
+  .muted { color: var(--muted); }
+  .bubble { border-radius: 10px; padding: 8px 10px; margin: 6px 0; white-space: pre-wrap; }
+  .bubble.desk { background: var(--accent-soft); }
+  .bubble.customer { background: var(--warn-soft); margin-left: 24px; }
+  .speaker { font-weight: 600; font-size: 12px; }
+  .say { margin: 2px 0 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); }
+  .short { color: var(--bad); font-weight: 600; }
+  .ruling { font-size: 15px; font-weight: 600; }
+  .decision { text-transform: uppercase; font-size: 12px; padding: 2px 8px; border-radius: 10px; margin-right: 6px; }
+  .decision.accept { background: var(--good-soft); color: var(--good); } .decision.decline { background: var(--bad-soft); color: var(--bad); }
+  .decision.counter, .decision.escalate { background: var(--warn-soft); color: var(--warn); }
+  .log { font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--muted); white-space: pre-wrap; max-height: 260px; overflow: auto; }
+  a { color: var(--accent); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Northwind Deal Desk</h1>
+  <span class="sub">Agents negotiate customer orders on RavenDB</span>
+  <a id="studio" href="#" target="_blank">RavenDB Studio ↗</a>
+</header>
+<main>
+  <section class="panel">
+    <h2>New request</h2>
+    <div class="row presets">
+      <button id="easy">Easy deal</button>
+      <button id="big">Big negotiation</button>
+    </div>
+    <label for="company">Customer</label>
+    <select id="company"></select>
+    <label for="email">Email</label>
+    <textarea id="email" placeholder="What does the customer ask for?"></textarea>
+    <label class="check"><input type="checkbox" id="po"> Attach purchase order <a href="po-ernst-handel.pdf" target="_blank">PO-4471.pdf</a></label>
+    <div class="row"><button class="primary" id="send">Send to the deal desk</button><span id="sent" class="muted"></span></div>
+  </section>
+  <section class="board" id="board"></section>
+  <section class="panel" id="detail" hidden></section>
+</main>
+<script>
+const lanes = [
+  { title: 'Inbox', statuses: ['New', 'Reading'] },
+  { title: 'Checks', statuses: ['Checking'] },
+  { title: 'Debate & ruling', statuses: ['Debating', 'Deciding'] },
+  { title: 'Customer', statuses: ['WaitingForCustomer', 'CustomerReplied'] },
+  { title: 'Manager', statuses: ['WaitingForManager', 'ManagerDecided'] },
+  { title: 'Won', statuses: ['Won'] },
+  { title: 'Lost', statuses: ['Lost', 'Failed'] },
+];
+const busy = new Set(['New', 'Reading', 'Checking', 'Debating', 'Deciding', 'CustomerReplied', 'ManagerDecided']);
+const statusText = {
+  New: 'queued', Reading: 'reading the request', Checking: 'running the checks', Debating: 'team debate', Deciding: 'deal lead ruling',
+  WaitingForCustomer: 'waiting for the customer', CustomerReplied: 'reading the reply', WaitingForManager: 'waiting for approval',
+  ManagerDecided: 'manager decided', Won: 'won', Lost: 'lost', Failed: 'failed',
+};
+const presets = {
+  easy: { company: 'companies/1-A', po: false, email: "Hello,\n\nplease send us 20 bags of Ipoh Coffee and 15 boxes of Valkoinen suklaa by the end of the month. Could you do 3% off?\n\nThanks,\nMaria Anders\nAlfreds Futterkiste" },
+  big: { company: 'companies/20-A', po: true, email: "Hello,\n\nplease find our purchase order PO-4471 attached. We need the goods in Graz by October 20th.\n\nAs one of your largest customers, we expect 15% off this order.\n\nBest regards,\nRoland Mendel\nSales Manager, Ernst Handel" },
+};
+
+const deals = new Map();
+const drafts = new Map();   // the writer's email, as it streams
+let selected = null;
+let studio = '';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pct = d => `${(d * 100).toFixed(1).replace(/\.0$/, '')}%`;
+const money = n => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const num = id => id.split('/')[1];
+const docLink = (id, text) => studio ? `<a href="${studio}${encodeURIComponent(id)}" target="_blank">${esc(text ?? id)}</a>` : esc(text ?? id);
+
+function askText(ask) {
+  if (!ask) return '';
+  return `${ask.lines.map(l => `${l.quantity} × ${l.productName}`).join(', ')} · ${pct(ask.discount)} off · by ${ask.requiredBy}`;
+}
+
+function renderBoard() {
+  const list = [...deals.values()].sort((a, b) => num(b.id) - num(a.id));
+  $('board').innerHTML = lanes.map(lane => {
+    const cards = list.filter(d => lane.statuses.includes(d.status));
+    return `<div class="lane"><h3><span>${lane.title}</span><span>${cards.length || ''}</span></h3>${cards.map(card).join('')}</div>`;
+  }).join('');
+  for (const el of document.querySelectorAll('.card')) el.onclick = () => { selected = el.dataset.id; renderBoard(); renderDetail(); };
+}
+
+function card(d) {
+  const kind = d.status === 'Won' ? 'won' : (d.status === 'Lost' || d.status === 'Failed') ? 'lost' : d.status.startsWith('WaitingFor') ? 'waiting' : '';
+  const checks = [['Stock', d.stock], ['Customer', d.customer], ['Margin', d.margin], ['Past deals', d.pastDeals]];
+  const shortLine = d.stock?.lines.some(l => l.short);
+  return `<div class="card ${kind} ${selected === d.id ? 'selected' : ''}" data-id="${d.id}">
+    <div class="co">${esc(d.companyName)}</div>
+    <div class="meta">${esc(d.id)}${d.round ? ` · round ${d.round}` : ''}</div>
+    <div class="meta ${busy.has(d.status) ? 'busy' : ''}">${drafts.has(d.id) ? 'writing to the customer' : statusText[d.status] ?? d.status}</div>
+    ${d.ask ? `<div class="meta">${esc(askText(d.ask))}</div>` : ''}
+    ${d.status === 'Checking' || d.stock ? `<div class="chips">${checks.map(([name, v]) =>
+      `<span class="chip ${v ? (name === 'Stock' && shortLine ? 'warn' : 'on') : ''}">${v ? '✓' : '·'} ${name}</span>`).join('')}</div>` : ''}
+    ${d.orderId ? `<div class="meta">order ${esc(d.orderId)}</div>` : ''}
+  </div>`;
+}
+
+async function renderDetail() {
+  const d = deals.get(selected);
+  const el = $('detail');
+  if (!d) { el.hidden = true; return; }
+  el.hidden = false;
+  const history = await fetch(`/deals/${num(d.id)}/history`).then(r => r.json()).catch(() => []);
+  const timeline = history.reverse().filter((h, i) => i === 0 || h.status !== history[i - 1].status || h.round !== history[i - 1].round);   // revisions come newest first
+  const notes = await fetch(`/deals/${num(d.id)}/notes`).then(r => r.text()).catch(() => '');
+
+  el.innerHTML = `
+    <h2>${esc(d.companyName)} · ${docLink(d.id)} · ${statusText[d.status] ?? d.status}${d.round ? ` · round ${d.round}` : ''}</h2>
+    <div class="detail-grid">
+      <div class="section"><h4>Request</h4><div class="bubble customer" style="margin-left:0">${esc(d.email)}</div>
+        ${d.ask ? `<div><b>Terms read:</b> ${esc(askText(d.ask))}</div><div class="muted">${esc(d.ask.summary)}</div>` : ''}</div>
+      ${checksSection(d)}
+      ${d.debate.length ? `<div class="section"><h4>Debate</h4>${d.debate.map(l => `<div class="speaker">${esc(l.speaker)}</div><div class="say">${esc(l.text)}</div>`).join('')}</div>` : ''}
+      ${d.ruling ? `<div class="section"><h4>Deal lead's ruling</h4>
+        <div class="ruling"><span class="decision ${esc(d.ruling.decision)}">${esc(d.ruling.decision)}</span>${pct(d.ruling.discount)} <span class="muted" style="font-weight:400">· the rep may grant ${pct(d.ruling.repAuthority)}</span></div>
+        <p>${esc(d.ruling.terms)}</p><p class="muted">${esc(d.ruling.reasoning)}</p>
+        ${d.ruling.dissent ? `<p><b>Dissent:</b> ${esc(d.ruling.dissent)}</p>` : ''}</div>` : ''}
+      ${escalationSection(d)}
+      ${negotiationSection(d)}
+      ${notes ? `<div class="section"><h4>Deal lead's notes on ${esc(d.companyName)}</h4><div class="log">${esc(notes)}</div></div>` : ''}
+      <div class="section"><h4>Timeline (revisions)</h4><div class="log">${timeline.map(h => `${new Date(h.lastModified).toLocaleTimeString()}  ${h.status}${h.round ? ` (round ${h.round})` : ''}`).join('\n')}</div>
+        <h4 style="margin-top:10px">Log</h4><div class="log">${d.log.map(esc).join('\n')}</div></div>
+    </div>`;
+
+  $('reply')?.addEventListener('click', () => post(`/deals/${num(d.id)}/reply`, { text: $('replyText').value }));
+  $('approve')?.addEventListener('click', () => post(`/deals/${num(d.id)}/decision`, { approved: true, note: $('note').value }));
+  $('reject')?.addEventListener('click', () => post(`/deals/${num(d.id)}/decision`, { approved: false, note: $('note').value }));
+  for (const s of document.querySelectorAll('[data-suggest]')) s.onclick = () => $('replyText').value = s.dataset.suggest;
+}
+
+function checksSection(d) {
+  if (!d.stock && !d.customer && !d.margin && !d.pastDeals) return '';
+  const c = d.customer, m = d.margin;
+  return `<div class="section"><h4>Checks</h4>
+    ${d.stock ? `<table><tr><th>Line</th><th>Asked</th><th>In stock</th><th>On order</th></tr>${d.stock.lines.map(l => `
+      <tr><td>${esc(l.productName)}</td><td>${l.quantity}</td><td class="${l.short ? 'short' : ''}">${l.unitsInStock}</td><td>${l.unitsOnOrder}</td></tr>
+      ${l.substitutes.length ? `<tr><td colspan="4" class="muted">substitutes: ${l.substitutes.map(s => `${esc(s.name)} (${s.unitsInStock} in stock)`).join(', ')}</td></tr>` : ''}`).join('')}</table>` : '<p class="muted busy">stock</p>'}
+    ${c ? `<p><b>Customer:</b> #${c.rank} by revenue, ${money(c.revenue)} over ${c.orders} orders, usual discount ${pct(c.usualDiscount)}.<br>
+      Rep ${docLink(c.rep, c.repName)} (${esc(c.repTitle)}) reports to ${docLink(c.manager, c.managerName)} (${esc(c.managerTitle)}).</p>` : '<p class="muted busy">customer value</p>'}
+    ${m ? `<p><b>Margin</b> (cost 70% of ${money(m.listTotal)} list): ${m.levels.map(l => `<span class="${l.margin < .2 ? 'short' : ''}">${pct(l.margin)} at ${pct(l.discount)}</span>`).join(' · ')}</p>` : '<p class="muted busy">margin</p>'}
+    ${d.pastDeals ? `<p><b>Similar past deals:</b></p><ul>${d.pastDeals.similar.map(s => `<li>${esc(s.summary)} <span class="muted">(${esc(s.outcome)}, score ${s.score.toFixed(2)})</span></li>`).join('')}</ul>` : '<p class="muted busy">past deals</p>'}
+  </div>`;
+}
+
+function escalationSection(d) {
+  const e = d.escalation;
+  if (!e) return '';
+  const waiting = d.status === 'WaitingForManager';
+  return `<div class="section"><h4>Approval: ${docLink(e.manager, e.managerName)} (${esc(e.managerTitle)})</h4>
+    <p><b>${pct(e.discount)}</b> · ${esc(e.reason)}</p>
+    ${waiting ? `<label for="note">Note</label><input type="text" id="note" placeholder="Optional note">
+      <div class="row"><button class="good" id="approve">Approve</button><button class="bad" id="reject">Reject</button></div>`
+      : `<p>${e.approved ? 'Approved' : 'Rejected'}${e.note ? `: ${esc(e.note)}` : ''}</p>`}
+  </div>`;
+}
+
+function negotiationSection(d) {
+  if (!d.messages.length && !drafts.has(d.id)) return '';
+  const waiting = d.status === 'WaitingForCustomer';
+  return `<div class="section"><h4>Negotiation with ${esc(d.companyName)}</h4>
+    ${d.messages.map(m => `<div class="bubble ${m.from}">${esc(m.text)}</div>`).join('')}
+    ${drafts.has(d.id) ? `<div class="bubble desk" id="draft">${esc(drafts.get(d.id))}</div>` : ''}
+    ${d.orderId ? `<p>Order created: ${docLink(d.orderId)}</p>` : ''}
+    ${waiting ? `<label for="replyText">Reply as the customer</label><textarea id="replyText" style="min-height:80px"></textarea>
+      <div class="row"><button class="primary" id="reply">Send reply</button>
+      <button data-suggest="Thanks! We'll take the substitute option at the discount you offered, everything delivered by the 20th.">Suggest: take the substitute</button></div>` : ''}
+  </div>`;
+}
+
+async function post(url, body) {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!response.ok) alert(await response.text());
+}
+
+$('easy').onclick = () => applyPreset(presets.easy);
+$('big').onclick = () => applyPreset(presets.big);
+function applyPreset(p) { $('company').value = p.company; $('email').value = p.email; $('po').checked = p.po; }
+
+$('send').onclick = async () => {
+  const form = new FormData();
+  form.append('company', $('company').value);
+  form.append('email', $('email').value);
+  if ($('po').checked) form.append('po', await fetch('po-ernst-handel.pdf').then(r => r.blob()), 'po.pdf');
+  $('send').disabled = true;
+  const response = await fetch('/deals', { method: 'POST', body: form });
+  $('send').disabled = false;
+  if (!response.ok) { alert(await response.text()); return; }
+  const deal = await response.json();
+  $('sent').textContent = `${deal.id} sent`;
+  deals.set(deal.id, deal); selected = deal.id; renderBoard(); renderDetail();
+};
+
+async function start() {
+  studio = (await fetch('/config').then(r => r.json())).studio;
+  $('studio').href = studio.replace(/edit\?/, 'documents?').replace(/&id=$/, '');
+  $('company').innerHTML = (await fetch('/companies').then(r => r.json())).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  for (const d of await fetch('/deals').then(r => r.json())) deals.set(d.id, d);
+  renderBoard();
+
+  // Every change to a deal arrives here, pushed by the RavenDB Changes API.
+  const events = new EventSource('/events');
+  events.addEventListener('deal', e => {
+    const d = JSON.parse(e.data);
+    deals.set(d.id, d);
+    if (!busy.has(d.status)) drafts.delete(d.id);   // the email went out
+    renderBoard();
+    if (d.id === selected && !document.activeElement?.matches('textarea, input')) renderDetail();
+  });
+
+  // The writer's email streams in as it is written.
+  events.addEventListener('draft', e => {
+    const { dealId, text } = JSON.parse(e.data);
+    const first = !drafts.has(dealId);
+    drafts.set(dealId, text);
+    if (first) { renderBoard(); if (dealId === selected) renderDetail(); }
+    else if (dealId === selected && $('draft')) $('draft').textContent = text;
+  });
+}
+start();
+</script>
+</body>
+</html>

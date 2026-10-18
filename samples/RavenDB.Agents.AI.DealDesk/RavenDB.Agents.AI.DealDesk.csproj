@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0" />
+    <PackageReference Include="RavenDB.Embedded" Version="7.2.6" />
+    <PackageReference Include="System.Reactive" Version="6.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RavenDB.Agents.AI\RavenDB.Agents.AI.csproj" />
+    <ProjectReference Include="..\..\src\RavenDB.Extensions.VectorData\RavenDB.Extensions.VectorData.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>RavenDB.Agents.AI</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);MEAI001</NoWarn>
+    <PackageId>RavenDB.Agents.AI</PackageId>
+    <Description>RavenDB integration for Microsoft Agent Framework: chat history, session store, workflow checkpoints, file store, skills, RAG search and RavenDB AI Agents. For vector stores and semantic memory, see RavenDB.Extensions.VectorData.</Description>
+    <Authors>RavenDB</Authors>
+    <PackageTags>ravendb;agents;ai;microsoft-agent-framework</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RavenDB.Agents.AI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.25.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.25.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Hosting" Version="1.25.0-preview.261014.1" />
+    <PackageReference Include="RavenDB.Client" Version="7.2.6" />
+  </ItemGroup>
+
+</Project>

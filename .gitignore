@@ -1,0 +1,23 @@
+# Build output
+bin/
+obj/
+TestResults/
+*.nupkg
+*.snupkg
+
+# IDE and user settings
+.vs/
+.vscode/
+.idea/
+*.user
+*.DotSettings.user
+
+# Local tooling
+.claude/
+
+# Embedded RavenDB data of the samples
+RavenDB/
+
+# Local working notes and RavenDB issue repros (failing by design)
+tasks/
+tests/RavenDB.Issues/
