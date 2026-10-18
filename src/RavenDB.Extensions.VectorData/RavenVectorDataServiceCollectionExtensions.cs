@@ -7,29 +7,41 @@ using Raven.Client.Documents;
 namespace RavenDB.Extensions.VectorData;
 
 /// <summary>
-/// Registers the RavenDB vector store and its collections in dependency injection. They use the <see cref="IDocumentStore"/>
-/// registered in the container (the app's own store).
+/// Registers the RavenDB vector store and collections for dependency injection. They use the <see cref="IDocumentStore"/>
+/// you've registered.
 /// </summary>
 /// <remarks>
-/// An <c>IEmbeddingGenerator</c> registered in the container is not used: RavenDB embeds text itself (string vector
-/// properties), so a generator meant for something else in the app doesn't conflict with the collections.
+/// An embedding generator registered in your app isn't used: RavenDB turns text into vectors itself.
 /// </remarks>
+/// <example>
+/// <code><![CDATA[
+/// services.AddSingleton(store);
+/// services.AddRavenVectorStore();
+/// services.AddRavenCollection<string, Hotel>("Hotels");   // inject VectorStoreCollection<string, Hotel>
+/// ]]></code>
+/// </example>
 public static class RavenVectorDataServiceCollectionExtensions
 {
-    /// <summary>Registers <see cref="RavenVectorStore"/> as itself and as <see cref="VectorStore"/>.</summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="options">Optional configuration.</param>
-    /// <param name="lifetime">The service lifetime.</param>
-    /// <returns>The service collection.</returns>
+    /// <summary>
+    /// Registers a <see cref="RavenVectorStore"/>, which you can then inject as <see cref="RavenVectorStore"/> or
+    /// <see cref="VectorStore"/>.
+    /// </summary>
+    /// <param name="services">The services to add to.</param>
+    /// <param name="options">Optional settings.</param>
+    /// <param name="lifetime">How long each instance lives. Defaults to one instance for the whole app.</param>
+    /// <returns>The same services, so you can chain calls.</returns>
     public static IServiceCollection AddRavenVectorStore(this IServiceCollection services, RavenVectorStoreOptions? options = null, ServiceLifetime lifetime = ServiceLifetime.Singleton) =>
         AddKeyedRavenVectorStore(services, null, options, lifetime);
 
-    /// <summary>Registers <see cref="RavenVectorStore"/> as itself and as <see cref="VectorStore"/> under a service key.</summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="serviceKey">The service key; <see langword="null"/> registers a non-keyed service.</param>
-    /// <param name="options">Optional configuration.</param>
-    /// <param name="lifetime">The service lifetime.</param>
-    /// <returns>The service collection.</returns>
+    /// <summary>
+    /// Registers a <see cref="RavenVectorStore"/> under a key, e.g. to use two databases. Inject it with that key as
+    /// <see cref="RavenVectorStore"/> or <see cref="VectorStore"/>.
+    /// </summary>
+    /// <param name="services">The services to add to.</param>
+    /// <param name="serviceKey">The key to inject it with; <see langword="null"/> registers it without a key.</param>
+    /// <param name="options">Optional settings.</param>
+    /// <param name="lifetime">How long each instance lives. Defaults to one instance for the whole app.</param>
+    /// <returns>The same services, so you can chain calls.</returns>
     public static IServiceCollection AddKeyedRavenVectorStore(this IServiceCollection services, object? serviceKey, RavenVectorStoreOptions? options = null, ServiceLifetime lifetime = ServiceLifetime.Singleton)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -39,16 +51,17 @@ public static class RavenVectorDataServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers a <see cref="RavenCollection{TKey, TRecord}"/> as itself, as <see cref="VectorStoreCollection{TKey, TRecord}"/>,
+    /// Registers a collection, which you can then inject as <see cref="RavenCollection{TKey, TRecord}"/>,
+    /// <see cref="VectorStoreCollection{TKey, TRecord}"/>,
     /// <see cref="IVectorSearchable{TRecord}"/> and <see cref="IKeywordHybridSearchable{TRecord}"/>.
     /// </summary>
-    /// <typeparam name="TKey">The key type.</typeparam>
+    /// <typeparam name="TKey">The record key type.</typeparam>
     /// <typeparam name="TRecord">The record type.</typeparam>
-    /// <param name="services">The service collection.</param>
-    /// <param name="name">The RavenDB collection name.</param>
-    /// <param name="options">Optional configuration.</param>
-    /// <param name="lifetime">The service lifetime.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The services to add to.</param>
+    /// <param name="name">The RavenDB collection name, e.g. <c>Hotels</c>.</param>
+    /// <param name="options">Optional settings.</param>
+    /// <param name="lifetime">How long each instance lives. Defaults to one instance for the whole app.</param>
+    /// <returns>The same services, so you can chain calls.</returns>
     [RequiresDynamicCode("RavenCollection's constructor is incompatible with NativeAOT.")]
     [RequiresUnreferencedCode("RavenCollection's constructor is incompatible with trimming.")]
     public static IServiceCollection AddRavenCollection<TKey, TRecord>(this IServiceCollection services, string name, RavenCollectionOptions? options = null, ServiceLifetime lifetime = ServiceLifetime.Singleton)
@@ -57,18 +70,18 @@ public static class RavenVectorDataServiceCollectionExtensions
         AddKeyedRavenCollection<TKey, TRecord>(services, null, name, options, lifetime);
 
     /// <summary>
-    /// Registers a <see cref="RavenCollection{TKey, TRecord}"/> under a service key, as itself,
+    /// Registers a collection under a key. Inject it with that key as <see cref="RavenCollection{TKey, TRecord}"/>,
     /// <see cref="VectorStoreCollection{TKey, TRecord}"/>, <see cref="IVectorSearchable{TRecord}"/> and
     /// <see cref="IKeywordHybridSearchable{TRecord}"/>.
     /// </summary>
-    /// <typeparam name="TKey">The key type.</typeparam>
+    /// <typeparam name="TKey">The record key type.</typeparam>
     /// <typeparam name="TRecord">The record type.</typeparam>
-    /// <param name="services">The service collection.</param>
-    /// <param name="serviceKey">The service key; <see langword="null"/> registers a non-keyed service.</param>
-    /// <param name="name">The RavenDB collection name.</param>
-    /// <param name="options">Optional configuration.</param>
-    /// <param name="lifetime">The service lifetime.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The services to add to.</param>
+    /// <param name="serviceKey">The key to inject it with; <see langword="null"/> registers it without a key.</param>
+    /// <param name="name">The RavenDB collection name, e.g. <c>Hotels</c>.</param>
+    /// <param name="options">Optional settings.</param>
+    /// <param name="lifetime">How long each instance lives. Defaults to one instance for the whole app.</param>
+    /// <returns>The same services, so you can chain calls.</returns>
     [RequiresDynamicCode("RavenCollection's constructor is incompatible with NativeAOT.")]
     [RequiresUnreferencedCode("RavenCollection's constructor is incompatible with trimming.")]
     public static IServiceCollection AddKeyedRavenCollection<TKey, TRecord>(this IServiceCollection services, object? serviceKey, string name, RavenCollectionOptions? options = null, ServiceLifetime lifetime = ServiceLifetime.Singleton)

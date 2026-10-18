@@ -6,20 +6,28 @@ using RavenDB.Extensions.VectorData.Internal;
 
 namespace RavenDB.Extensions.VectorData;
 
-/// <summary>Prepares a RavenDB document store for Microsoft.Extensions.VectorData records.</summary>
+/// <summary>Sets up a RavenDB document store for vector store records.</summary>
 public static class RavenVectorDataDocumentStoreExtensions
 {
     private static readonly ConditionalWeakTable<DocumentConventions, object> s_configured = [];
 
     /// <summary>
-    /// Teaches RavenDB's serializer the vector types Microsoft.Extensions.VectorData uses, <see cref="ReadOnlyMemory{T}"/> of
-    /// <see cref="float"/> and <c>Embedding&lt;float&gt;</c>, stored as JSON arrays. Call it before <c>Initialize()</c>; records
-    /// with <c>float[]</c> or RavenDB-embedded <see cref="string"/> vectors don't need it.
+    /// Lets the document store save vectors of type <c>ReadOnlyMemory&lt;float&gt;</c> and <c>Embedding&lt;float&gt;</c>, as
+    /// arrays of numbers. Call it before <c>Initialize()</c>.
     /// </summary>
+    /// <remarks>
+    /// You need it only for those two vector types: <c>float[]</c> vectors and <see cref="string"/> vectors (which RavenDB
+    /// turns into vectors itself) work without it. A collection with those vector types tells you when it's missing.
+    /// </remarks>
     /// <typeparam name="TStore">The document store type.</typeparam>
-    /// <param name="store">A document store that is not initialized yet.</param>
-    /// <returns>The same store.</returns>
-    /// <exception cref="NotSupportedException">The store doesn't use RavenDB's Newtonsoft serialization.</exception>
+    /// <param name="store">A document store that isn't initialized yet.</param>
+    /// <returns>The same store, so you can chain <c>Initialize()</c>.</returns>
+    /// <exception cref="NotSupportedException">The store uses a custom serializer instead of RavenDB's default one.</exception>
+    /// <example>
+    /// <code><![CDATA[
+    /// var store = new DocumentStore { Urls = ["http://localhost:8080"], Database = "Hotels" }.UseVectorData().Initialize();
+    /// ]]></code>
+    /// </example>
     public static TStore UseVectorData<TStore>(this TStore store)
         where TStore : IDocumentStore
     {

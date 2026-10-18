@@ -4,21 +4,31 @@ using Raven.Client.Documents;
 
 namespace RavenDB.Agents.AI;
 
-/// <summary>Hosting extensions for wiring RavenDB into MAF hosted agents.</summary>
+/// <summary>Adds RavenDB to agents hosted with the Agent Framework's hosting.</summary>
 public static class RavenHostingExtensions
 {
     /// <summary>
-    /// Persists the hosted agent's sessions in RavenDB, using the <see cref="IDocumentStore"/> registered in DI.
+    /// Saves the hosted agent's sessions in RavenDB, with the <see cref="IDocumentStore"/> registered in dependency injection.
     /// </summary>
     /// <remarks>
-    /// Isolation works as in MAF's own session stores: when on (the default), MAF adds the key from the registered
-    /// <see cref="AgentIsolationKeyProvider"/> (e.g. the signed-in user) to every session key, so a caller who knows another
-    /// user's session id still can't load that session. It is strict: without a registered
-    /// <see cref="AgentIsolationKeyProvider"/>, every session load and save throws.
+    /// <para>
+    /// With isolation (the default), each session belongs to the key from the registered <see cref="AgentIsolationKeyProvider"/>,
+    /// e.g. the signed-in user, so one user can't load another user's session even with its id. Register an
+    /// <see cref="AgentIsolationKeyProvider"/>, or every session load and save fails.
+    /// </para>
     /// </remarks>
-    /// <param name="builder">The hosted agent builder.</param>
-    /// <param name="configure">Optional store options; <see cref="RavenAgentSessionStoreOptions.AgentNamespace"/> defaults to the hosted agent name.</param>
-    /// <param name="withIsolation">Whether sessions are scoped by the host's isolation key (e.g. the signed-in user). Turn it off only for a single-user or development host.</param>
+    /// <param name="builder">The hosted agent.</param>
+    /// <param name="configure">Optional settings for the store. The agent namespace defaults to the hosted agent's name.</param>
+    /// <param name="withIsolation">Whether each user (or whatever the isolation key is) has their own sessions. Turn it off
+    /// only for a single-user or development host.</param>
+    /// <returns>The same builder.</returns>
+    /// <example>
+    /// <code><![CDATA[
+    /// builder.Services.AddSingleton<IDocumentStore>(store);
+    /// builder.Services.AddSingleton<AgentIsolationKeyProvider, SignedInUserKeyProvider>();
+    /// builder.AddAIAgent("support", "You are a support agent.").WithRavenSessionStore();
+    /// ]]></code>
+    /// </example>
     public static IHostedAgentBuilder WithRavenSessionStore(this IHostedAgentBuilder builder, Action<RavenAgentSessionStoreOptions>? configure = null, bool withIsolation = true)
     {
         ArgumentNullException.ThrowIfNull(builder);

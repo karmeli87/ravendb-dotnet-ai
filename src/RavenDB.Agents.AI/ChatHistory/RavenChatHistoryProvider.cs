@@ -10,33 +10,38 @@ using RavenDB.Agents.AI.Internal;
 namespace RavenDB.Agents.AI;
 
 /// <summary>
-/// Chat history for MAF agents that call the model themselves, such as <see cref="ChatClientAgent"/>: each conversation is
-/// one <see cref="ChatConversation"/> document holding the messages exactly as MAF produced them.
+/// Keeps an agent's chat history in RavenDB, one <see cref="ChatConversation"/> document per conversation. Use it with
+/// agents that call the model themselves, such as <see cref="ChatClientAgent"/>.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>Not for <see cref="RavenAIAgent"/>.</b> A RavenDB AI agent's conversation is kept by RavenDB itself (in
-/// <c>@conversations</c>, readable with <c>GetConversationMessagesOperation</c>); this provider is for every other agent.
-/// </para>
-/// <para>
-/// Everything round-trips: text, tool calls and results, images, reasoning and custom properties. The conversation id lives
-/// in the <see cref="AgentSession.StateBag"/>, so a serialized session reconnects to the same document. To bound what is
-/// sent to the model, use MAF's compaction (e.g. <c>CompactionProvider</c>), which keeps tool calls and results together.
-/// </para>
-/// <para>
-/// Each append is one server-side JSON Patch that adds the messages to the end of the stored list, so concurrent runs on
-/// one conversation never lose messages and the growing conversation is never rewritten. <see cref="RavenDocumentStoreOptions.TimeToLive"/> counts from when the conversation is created.
-/// </para>
+/// <list type="bullet">
+/// <item><description><b>Not needed for <see cref="RavenAIAgent"/></b>: RavenDB keeps that agent's conversation itself.</description></item>
+/// <item><description>Messages are stored complete (text, tool calls and results, images, reasoning), so the history
+/// reads back exactly as it was written.</description></item>
+/// <item><description>The session remembers its conversation, so a saved and restored session continues the same history.</description></item>
+/// <item><description>Runs that add to the same conversation at the same time don't lose messages.</description></item>
+/// <item><description>To limit how much history is sent to the model, use the Agent Framework's compaction
+/// (e.g. <c>CompactionProvider</c>).</description></item>
+/// </list>
 /// </remarks>
+/// <example>
+/// <code><![CDATA[
+/// var history = new RavenChatHistoryProvider(store, new RavenChatHistoryProviderOptions
+/// {
+///     StateInitializer = _ => new RavenChatHistoryProvider.State("tickets/42"), // continue ChatConversations/tickets/42
+/// });
+/// var agent = new ChatClientAgent(chatClient, new ChatClientAgentOptions { ChatHistoryProvider = history });
+/// ]]></code>
+/// </example>
 public sealed class RavenChatHistoryProvider : ChatHistoryProvider
 {
     private readonly IDocumentStore _store;
     private readonly RavenChatHistoryProviderOptions _options;
     private readonly ProviderSessionState<State> _sessionState;
 
-    /// <summary>Initializes a new instance of the <see cref="RavenChatHistoryProvider"/> class.</summary>
+    /// <summary>Creates a chat history provider.</summary>
     /// <param name="store">An initialized RavenDB document store.</param>
-    /// <param name="options">Optional configuration.</param>
+    /// <param name="options">Optional settings, such as which conversation a new session continues.</param>
     public RavenChatHistoryProvider(IDocumentStore store, RavenChatHistoryProviderOptions? options = null)
         : base(options?.ProvideOutputMessageFilter, options?.StoreInputRequestMessageFilter, options?.StoreInputResponseMessageFilter)
     {
@@ -102,10 +107,11 @@ public sealed class RavenChatHistoryProvider : ChatHistoryProvider
 
     private string GetDocumentId(AgentSession? session) => $"{_options.DocumentIdPrefix}/{_sessionState.GetOrInitializeState(session).ConversationId}";
 
-    /// <summary>Per-session state stored in the <see cref="AgentSession.StateBag"/>.</summary>
+    /// <summary>Which conversation a session uses. The provider saves it with the session.</summary>
     public sealed class State
     {
-        /// <summary>Initializes a new instance of the <see cref="State"/> class.</summary>
+        /// <summary>Points a session at a conversation.</summary>
+        /// <param name="conversationId">The conversation id, without the document id prefix, e.g. <c>tickets/42</c>.</param>
         [JsonConstructor]
         public State(string conversationId)
         {
@@ -113,39 +119,54 @@ public sealed class RavenChatHistoryProvider : ChatHistoryProvider
             ConversationId = conversationId;
         }
 
-        /// <summary>Gets the id of the conversation document (without prefix).</summary>
+        /// <summary>Gets the conversation id, without the document id prefix.</summary>
         [JsonPropertyName("conversationId")]
         public string ConversationId { get; }
     }
 }
 
-/// <summary>Options for <see cref="RavenChatHistoryProvider"/>, the chat history for agents other than <see cref="RavenAIAgent"/>.</summary>
-/// <remarks>Documents are <c>{DocumentIdPrefix}/{conversationId}</c>; default prefix <c>ChatConversations</c>.</remarks>
+/// <summary>Settings for a <see cref="RavenChatHistoryProvider"/>.</summary>
+/// <remarks>
+/// Each conversation is the document <c>{DocumentIdPrefix}/{conversationId}</c>; the prefix defaults to <c>ChatConversations</c>.
+/// </remarks>
 public sealed class RavenChatHistoryProviderOptions() : RavenDocumentStoreOptions("ChatConversations")
 {
-    /// <summary>Gets or sets a delegate that binds a new session to a conversation (e.g. a known conversation id).</summary>
+    /// <summary>
+    /// Gets or sets which conversation a new session uses, e.g. <c>_ =&gt; new RavenChatHistoryProvider.State("tickets/42")</c>.
+    /// When not set, each new session starts a new conversation.
+    /// </summary>
     public Func<AgentSession?, RavenChatHistoryProvider.State>? StateInitializer { get; set; }
 
-    /// <summary>Gets or sets the key used in the session state bag.</summary>
+    /// <summary>
+    /// Gets or sets the name under which the provider saves its state in the session. Set it only when an agent uses two
+    /// chat history providers.
+    /// </summary>
     public string? StateKey { get; set; }
 
-    /// <summary>Gets or sets a filter applied to history before it is sent to the model.</summary>
+    /// <summary>Gets or sets a function that chooses which stored messages are sent to the model.</summary>
     public Func<IEnumerable<ChatMessage>, IEnumerable<ChatMessage>>? ProvideOutputMessageFilter { get; set; }
 
-    /// <summary>Gets or sets a filter applied to request messages before they are stored.</summary>
+    /// <summary>
+    /// Gets or sets a function that chooses which input messages are saved, e.g. to skip memories and search results that
+    /// context providers add on every run.
+    /// </summary>
     public Func<IEnumerable<ChatMessage>, IEnumerable<ChatMessage>>? StoreInputRequestMessageFilter { get; set; }
 
-    /// <summary>Gets or sets a filter applied to response messages before they are stored.</summary>
+    /// <summary>Gets or sets a function that chooses which response messages are saved.</summary>
     public Func<IEnumerable<ChatMessage>, IEnumerable<ChatMessage>>? StoreInputResponseMessageFilter { get; set; }
 }
 
-/// <summary>A conversation of an agent other than <see cref="RavenAIAgent"/> (collection <c>@ChatConversations</c>).</summary>
+/// <summary>
+/// A stored conversation of a <see cref="RavenChatHistoryProvider"/>. Load it to read a conversation's messages.
+/// </summary>
 public sealed class ChatConversation
 {
-    /// <summary>The collection these documents are stored in, <c>@ChatConversations</c>; pass it as <c>collectionName</c> to query them.</summary>
+    /// <summary>
+    /// The collection of these documents, <c>@ChatConversations</c>. Pass it as <c>collectionName</c> when you query them.
+    /// </summary>
     public const string CollectionName = "@ChatConversations";
 
-    /// <summary>Gets or sets the messages, oldest first, exactly as MAF produced them.</summary>
+    /// <summary>Gets or sets the messages, oldest first.</summary>
     [Newtonsoft.Json.JsonConverter(typeof(SystemTextJsonConverter))]
     public List<ChatMessage> Messages { get; set; } = [];
 }

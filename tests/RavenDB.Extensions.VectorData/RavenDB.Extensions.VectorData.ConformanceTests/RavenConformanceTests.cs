@@ -36,6 +36,17 @@ public class RavenFilterTests(RavenFilterTests.Fixture fixture)
 
     public override Task Any_with_Contains_over_captured_string_list() => Assert.ThrowsAsync<InvalidOperationException>(base.Any_with_Contains_over_captured_string_list);
 
+    // Unsupported by RavenDB's LINQ: a boolean value of a dynamic (dictionary) record, (bool)r["Bool"].
+    public override Task Bool() => Assert.ThrowsAsync<NotSupportedException>(base.Bool);
+
+    public override Task Not_over_bool() => Assert.ThrowsAsync<NotSupportedException>(base.Not_over_bool);
+
+    public override Task Bool_And_Bool() => Assert.ThrowsAsync<NotSupportedException>(base.Bool_And_Bool);
+
+    public override Task Bool_Or_Not_Bool() => Assert.ThrowsAsync<NotSupportedException>(base.Bool_Or_Not_Bool);
+
+    public override Task Not_over_bool_And_Comparison() => Assert.ThrowsAsync<NotSupportedException>(base.Not_over_bool_And_Comparison);
+
     public new class Fixture : FilterTests<string>.Fixture
     {
         public override TestStore TestStore => RavenTestStore.Instance;
@@ -54,6 +65,13 @@ public class RavenIndexKindTests(RavenIndexKindTests.Fixture fixture)
 public class RavenDistanceFunctionTests(RavenDistanceFunctionTests.Fixture fixture)
     : DistanceFunctionTests<string>(fixture), IClassFixture<RavenDistanceFunctionTests.Fixture>
 {
+    // RavenDB-27709: a minimum similarity of 1E-06 is written in exponent notation and the RQL parser rejects it.
+    public override Task CosineSimilarity()
+    {
+        Assert.Skip("RavenDB-27709: unskip once RavenDB parses minimum similarities like 1E-06.");
+        return base.CosineSimilarity();
+    }
+
     // RavenDB vector search supports cosine similarity only.
     public override Task CosineDistance() => Assert.ThrowsAsync<NotSupportedException>(base.CosineDistance);
 
@@ -138,6 +156,13 @@ public class RavenNoVectorModelTests(RavenNoVectorModelTests.Fixture fixture)
 public class RavenDataTypeTests(RavenDataTypeTests.Fixture fixture)
     : DataTypeTests<string, DataTypeTests<string>.DefaultRecord>(fixture), IClassFixture<RavenDataTypeTests.Fixture>
 {
+    // Unsupported by RavenDB's LINQ: a boolean value of a dynamic (dictionary) record, (bool)r["Bool"] == true.
+    public override Task Bool() => Assert.ThrowsAsync<NotSupportedException>(base.Bool);
+
+    // Unsupported by RavenDB: an array equality filter is sent as an array parameter, which the server rejects.
+    // For an exact (order-insensitive) match write r.Tags.ContainsAll(values) && r.Tags.Length == values.Length.
+    public override Task String_array() => Assert.ThrowsAsync<Raven.Client.Exceptions.InvalidQueryException>(base.String_array);
+
     public new class Fixture : DataTypeTests<string, DataTypeTests<string>.DefaultRecord>.Fixture
     {
         public override TestStore TestStore => RavenTestStore.Instance;
@@ -147,6 +172,13 @@ public class RavenDataTypeTests(RavenDataTypeTests.Fixture fixture)
 public class RavenEmbeddingTypeTests(RavenEmbeddingTypeTests.Fixture fixture)
     : EmbeddingTypeTests<string>(fixture), IClassFixture<RavenEmbeddingTypeTests.Fixture>
 {
+    // Unsupported by design: client-side embedding generators are rejected (RavenDB embeds strings itself).
+    public override Task ReadOnlyMemory_of_float() => Assert.ThrowsAsync<NotSupportedException>(base.ReadOnlyMemory_of_float);
+
+    public override Task Embedding_of_float() => Assert.ThrowsAsync<NotSupportedException>(base.Embedding_of_float);
+
+    public override Task Array_of_float() => Assert.ThrowsAsync<NotSupportedException>(base.Array_of_float);
+
     public new class Fixture : EmbeddingTypeTests<string>.Fixture
     {
         public override TestStore TestStore => RavenTestStore.Instance;

@@ -11,35 +11,38 @@ using Raven.Client.Documents.Operations.AI;
 namespace RavenDB.Agents.AI;
 
 /// <summary>
-/// An <see cref="AIAgent"/> that runs a RavenDB server-side AI Agent (configured in Studio or via
-/// <c>store.AI.CreateAgentAsync</c>), so it can join MAF workflows, hosting and orchestrations like any other agent.
+/// Runs a RavenDB AI agent as a Microsoft Agent Framework agent, so you can use it in workflows, hosting and
+/// orchestrations like any other <see cref="AIAgent"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The conversation lives in RavenDB (the agent's own history, trimming and query tools run server-side); the
-/// <see cref="RavenAIAgentSession"/> only carries the conversation id and its parameters.
+/// The RavenDB AI agent is defined in RavenDB (in Studio, or with <c>store.AI.CreateAgentAsync</c>): its prompt, model
+/// connection, parameters, query tools and actions. RavenDB calls the model and keeps the conversation; the
+/// <see cref="RavenAIAgentSession"/> only holds the conversation id and its parameter values.
 /// </para>
-/// <para>
-/// A plain run replies with the RavenDB agent's answer as text. For the typed answer use
-/// <see cref="RunAsync{TAnswer}(string, AgentSession?, CancellationToken)"/>, or
-/// <see cref="RunStreamingAsync{TAnswer}(Expression{Func{TAnswer, string}}, string, AgentSession?, CancellationToken)"/>
-/// to stream one of its string properties; <c>TAnswer</c> must match the answer shape in the agent's configuration.
-/// MAF's <c>AIAgent.RunAsync&lt;T&gt;</c>, called through an <see cref="AIAgent"/>, throws <see cref="NotSupportedException"/>.
-/// </para>
-/// <para>
-/// When the RavenDB agent requests an <em>action</em> (a client-side tool), a matching <see cref="AIFunction"/> from
-/// the constructor's <c>actions</c> is invoked automatically. Unmatched actions are returned to the caller as
-/// <see cref="FunctionCallContent"/>; send the results back as <see cref="FunctionResultContent"/> in the next run. A result
-/// whose call is in the same input belongs to another agent's own tool (MAF workflows forward both) and is not sent.
-/// </para>
-/// <para>
-/// Files in user messages (<see cref="DataContent"/>, e.g. images and PDFs) are sent to the model as attachments of the
-/// conversation document, named by <see cref="DataContent.Name"/> (a generated name when it is <see langword="null"/>).
-/// A name sent again in a later turn replaces that attachment.
-/// <see cref="RavenAttachment.Copy"/> copies an existing document attachment instead, without the bytes passing
-/// through the client.
-/// </para>
+/// <list type="bullet">
+/// <item><description><b>Answers.</b> A run returns the agent's answer as text. To get it typed, call
+/// <see cref="RunAsync{TAnswer}(string, AgentSession?, CancellationToken)"/> with a type that matches the answer shape in
+/// the agent's configuration, or <see cref="RunStreamingAsync{TAnswer}(Expression{Func{TAnswer, string}}, string, AgentSession?, CancellationToken)"/>
+/// to stream one of its text properties. Calling <c>AIAgent.RunAsync&lt;T&gt;</c> through an <see cref="AIAgent"/> variable
+/// throws <see cref="NotSupportedException"/>.</description></item>
+/// <item><description><b>Actions.</b> When the agent requests an action, the <see cref="AIFunction"/> with the same name
+/// from the constructor's <c>actions</c> runs automatically. Any other action comes back as a
+/// <see cref="FunctionCallContent"/>; answer it with a <see cref="FunctionResultContent"/> in the next run.</description></item>
+/// <item><description><b>Files.</b> Images, PDFs and text files in a user message (<see cref="DataContent"/>) are sent to
+/// the model under their <see cref="DataContent.Name"/> (a generated name when it's not set); sending the same name again
+/// replaces the file. To send a file that's already a RavenDB attachment, use <see cref="RavenAttachment.Copy"/>.</description></item>
+/// </list>
 /// </remarks>
+/// <example>
+/// <code><![CDATA[
+/// var agent = new RavenAIAgent(store, "support-agent", actions: [sendEmail]);
+/// var session = new RavenAIAgentSession { Parameters = { ["company"] = "companies/1" } };
+///
+/// AgentResponse response = await agent.RunAsync("Where is my order?", session);
+/// AgentResponse<Reply> typed = await agent.RunAsync<Reply>("Where is my order?", session);
+/// ]]></code>
+/// </example>
 public sealed class RavenAIAgent : AIAgent
 {
     private readonly AiOperations _ai;
@@ -47,11 +50,12 @@ public sealed class RavenAIAgent : AIAgent
     private readonly RavenAIAgentOptions _options;
     private readonly Dictionary<string, AIFunction> _actions;
 
-    /// <summary>Initializes a new instance of the <see cref="RavenAIAgent"/> class.</summary>
+    /// <summary>Creates an agent for the RavenDB AI agent with the given identifier.</summary>
     /// <param name="store">An initialized RavenDB document store.</param>
-    /// <param name="agentId">The identifier of the RavenDB AI agent.</param>
-    /// <param name="actions">Client-side implementations of the RavenDB agent's actions, matched by name and run in place.</param>
-    /// <param name="options">Optional configuration.</param>
+    /// <param name="agentId">The RavenDB AI agent's identifier (<see cref="Raven.Client.Documents.Operations.AI.Agents.AiAgentConfiguration.Identifier"/>).</param>
+    /// <param name="actions">Functions that answer the agent's actions, matched by name. Actions without a function here are
+    /// returned to you as function calls.</param>
+    /// <param name="options">Optional settings, such as the agent name.</param>
     public RavenAIAgent(IDocumentStore store, string agentId, IList<AIFunction>? actions = null, RavenAIAgentOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -81,21 +85,18 @@ public sealed class RavenAIAgent : AIAgent
         new(serializedState.Deserialize<RavenAIAgentSession>(jsonSerializerOptions ?? AIJsonUtilities.DefaultOptions) ?? new RavenAIAgentSession());
 
     /// <inheritdoc cref="RunAsync{TAnswer}(IEnumerable{ChatMessage}, AgentSession?, CancellationToken)" path="/summary|/typeparam|/returns"/>
-    /// <param name="message">The user message.</param>
-    /// <param name="session">The session; <see langword="null"/> starts a new conversation.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="message">The user's message.</param>
+    /// <param name="session">The session to continue; <see langword="null"/> starts a new conversation.</param>
+    /// <param name="cancellationToken">A token to cancel the run.</param>
     public Task<AgentResponse<TAnswer>> RunAsync<TAnswer>(string message, AgentSession? session = null, CancellationToken cancellationToken = default) =>
         RunAsync<TAnswer>([new ChatMessage(ChatRole.User, message)], session, cancellationToken);
 
-    /// <summary>
-    /// Runs the agent for its structured answer as <typeparamref name="TAnswer"/> (like RavenDB's <c>RunAsync&lt;TAnswer&gt;()</c>),
-    /// through MAF's <c>RunAsync&lt;T&gt;</c>.
-    /// </summary>
-    /// <typeparam name="TAnswer">The answer type; it must match the answer shape in the RavenDB agent's configuration.</typeparam>
-    /// <param name="messages">The messages, e.g. tool results for the agent's earlier actions.</param>
-    /// <param name="session">The session; <see langword="null"/> starts a new conversation.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The response, with the typed answer as its <see cref="AgentResponse{T}.Result"/>.</returns>
+    /// <summary>Runs the agent and returns its answer as a <typeparamref name="TAnswer"/>.</summary>
+    /// <typeparam name="TAnswer">The answer type. It must match the answer shape in the RavenDB agent's configuration.</typeparam>
+    /// <param name="messages">The messages to send, e.g. a user message or the results of the agent's earlier actions.</param>
+    /// <param name="session">The session to continue; <see langword="null"/> starts a new conversation.</param>
+    /// <param name="cancellationToken">A token to cancel the run.</param>
+    /// <returns>The response; the typed answer is in <see cref="AgentResponse{T}.Result"/>.</returns>
     public Task<AgentResponse<TAnswer>> RunAsync<TAnswer>(IEnumerable<ChatMessage> messages, AgentSession? session = null, CancellationToken cancellationToken = default) =>
         RunAsync<TAnswer>(messages, session, AIJsonUtilities.DefaultOptions, new RavenAgentRunOptions<TAnswer>(), cancellationToken);
 
@@ -124,24 +125,23 @@ public sealed class RavenAIAgent : AIAgent
     }
 
     /// <inheritdoc cref="RunStreamingAsync{TAnswer}(Expression{Func{TAnswer, string}}, IEnumerable{ChatMessage}, AgentSession?, CancellationToken)" path="/summary|/typeparam|/returns"/>
-    /// <param name="stream">The string property to stream, e.g. <c>a =&gt; a.Answer</c>.</param>
-    /// <param name="message">The user message.</param>
-    /// <param name="session">The session; <see langword="null"/> starts a new conversation.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="stream">The text property to stream, e.g. <c>a =&gt; a.Answer</c>.</param>
+    /// <param name="message">The user's message.</param>
+    /// <param name="session">The session to continue; <see langword="null"/> starts a new conversation.</param>
+    /// <param name="cancellationToken">A token to cancel the run.</param>
     public IAsyncEnumerable<AgentResponseUpdate> RunStreamingAsync<TAnswer>(Expression<Func<TAnswer, string>> stream, string message, AgentSession? session = null, CancellationToken cancellationToken = default) =>
         RunStreamingAsync(stream, [new ChatMessage(ChatRole.User, message)], session, cancellationToken);
 
     /// <summary>
-    /// Runs the agent for a structured answer of type <typeparamref name="TAnswer"/>, streaming one of its string properties
-    /// token by token (like RavenDB's <c>StreamAsync&lt;TAnswer&gt;(x =&gt; x.Property, …)</c>). The last update carries the
-    /// typed answer as its <see cref="AgentResponseUpdate.RawRepresentation"/>.
+    /// Runs the agent for a <typeparamref name="TAnswer"/> answer and streams one of its text properties as it's generated.
     /// </summary>
-    /// <typeparam name="TAnswer">The answer type; it must match the answer shape in the RavenDB agent's configuration.</typeparam>
-    /// <param name="stream">The string property to stream, e.g. <c>a =&gt; a.Answer</c>.</param>
-    /// <param name="messages">The messages, e.g. tool results for the agent's earlier actions.</param>
-    /// <param name="session">The session; <see langword="null"/> starts a new conversation.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The streamed updates.</returns>
+    /// <remarks>The last update holds the complete typed answer in <see cref="AgentResponseUpdate.RawRepresentation"/>.</remarks>
+    /// <typeparam name="TAnswer">The answer type. It must match the answer shape in the RavenDB agent's configuration.</typeparam>
+    /// <param name="stream">The text property to stream, e.g. <c>a =&gt; a.Answer</c>.</param>
+    /// <param name="messages">The messages to send, e.g. a user message or the results of the agent's earlier actions.</param>
+    /// <param name="session">The session to continue; <see langword="null"/> starts a new conversation.</param>
+    /// <param name="cancellationToken">A token to cancel the run.</param>
+    /// <returns>The updates, in order.</returns>
     public IAsyncEnumerable<AgentResponseUpdate> RunStreamingAsync<TAnswer>(Expression<Func<TAnswer, string>> stream, IEnumerable<ChatMessage> messages, AgentSession? session = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -340,12 +340,16 @@ public sealed class RavenAIAgent : AIAgent
     }
 }
 
-/// <summary>Options for <see cref="RavenAIAgent"/>.</summary>
+/// <summary>Settings for a <see cref="RavenAIAgent"/>.</summary>
 public sealed class RavenAIAgentOptions : RavenOptions
 {
-    /// <summary>Gets or sets the agent name exposed to MAF. Defaults to the RavenDB agent id.</summary>
+    /// <summary>
+    /// Gets or sets the agent's name, e.g. the name you register it under in hosting. Defaults to the RavenDB agent's identifier.
+    /// </summary>
     public string? Name { get; set; }
 
-    /// <summary>Gets or sets the id prefix for new conversations, which get <c>{prefix}/{guid}</c>. Default <c>Chats</c>.</summary>
+    /// <summary>
+    /// Gets or sets the id prefix of new conversations, which get the id <c>{prefix}/{guid}</c>. Defaults to <c>Chats</c>.
+    /// </summary>
     public string ConversationIdPrefix { get; set; } = "Chats";
 }

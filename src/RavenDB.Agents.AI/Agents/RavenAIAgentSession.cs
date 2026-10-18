@@ -4,22 +4,23 @@ using Microsoft.Agents.AI;
 namespace RavenDB.Agents.AI;
 
 /// <summary>
-/// A session of a <see cref="RavenAIAgent"/>: the RavenDB AI conversation it continues and that conversation's parameters.
+/// A conversation with a <see cref="RavenAIAgent"/>: which RavenDB conversation it continues, and the values of the agent's
+/// parameters.
 /// </summary>
 /// <remarks>
-/// Like every MAF agent's session, its own data is typed properties; the <see cref="AgentSession.StateBag"/> is left to
-/// providers and hosting layers (e.g. <see cref="RavenAgentSessionStore"/> puts the session key's partitions there).
+/// Pass the same session to every run to continue the conversation. Save and restore it like any agent session (for
+/// example with <see cref="RavenAgentSessionStore"/>).
 /// </remarks>
 public sealed class RavenAIAgentSession : AgentSession
 {
-    /// <summary>Initializes a new instance of the <see cref="RavenAIAgentSession"/> class.</summary>
+    /// <summary>Creates a session for a new conversation.</summary>
     public RavenAIAgentSession()
     {
     }
 
-    /// <summary>Initializes a new instance of the <see cref="RavenAIAgentSession"/> class with existing state.</summary>
-    /// <param name="conversationId">The RavenDB conversation document id, if the conversation has started.</param>
-    /// <param name="stateBag">The session state bag.</param>
+    /// <summary>Restores a session, e.g. when it's deserialized.</summary>
+    /// <param name="conversationId">The id of the RavenDB conversation, or <see langword="null"/> if it hasn't started yet.</param>
+    /// <param name="stateBag">The session's state bag.</param>
     [JsonConstructor]
     public RavenAIAgentSession(string? conversationId, AgentSessionStateBag stateBag)
         : base(stateBag)
@@ -28,16 +29,21 @@ public sealed class RavenAIAgentSession : AgentSession
     }
 
     /// <summary>
-    /// Gets or sets the RavenDB AI conversation id. Set it to bind a known conversation; otherwise one is generated on the
-    /// first run.
+    /// Gets or sets the id of the RavenDB conversation. Set it to continue a conversation you know, e.g. <c>Chats/tickets/42</c>;
+    /// otherwise a new id is created on the first run.
     /// </summary>
     public string? ConversationId { get; set; }
 
     /// <summary>
-    /// Gets or sets the values of the RavenDB agent's parameters (e.g. <c>company</c>) for this session's conversation.
-    /// RavenDB requires a value for each declared parameter when a conversation starts and keeps them for its lifetime;
-    /// values the agent doesn't declare are ignored. When the session came from a <see cref="RavenAgentSessionStore"/>, the
-    /// key's partitions (the hosting isolation key as <c>isolation</c>) are used for any parameter not set here.
+    /// Gets or sets the values of the agent's parameters for this conversation, e.g. <c>["company"] = "companies/1"</c>.
     /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><description>Every parameter the agent declares needs a value when the conversation starts; the values then stay
+    /// fixed for the whole conversation. Names the agent doesn't declare are ignored.</description></item>
+    /// <item><description>A session from <see cref="RavenAgentSessionStore"/> also uses the values in its key (and, when
+    /// hosted, the signed-in user's isolation key as <c>isolation</c>) for any parameter not set here.</description></item>
+    /// </list>
+    /// </remarks>
     public Dictionary<string, string> Parameters { get; set; } = [];
 }

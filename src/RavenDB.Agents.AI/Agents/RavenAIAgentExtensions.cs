@@ -4,15 +4,26 @@ using Raven.Client.Documents.Operations.AI.Agents;
 
 namespace RavenDB.Agents.AI;
 
-/// <summary>Extensions that connect MAF tools to RavenDB AI Agent definitions.</summary>
+/// <summary>Helpers for defining RavenDB AI agents and creating <see cref="RavenAIAgent"/> instances for them.</summary>
 public static class RavenAIAgentExtensions
 {
     /// <summary>
-    /// Creates a RavenDB AI Agent action from a MAF tool: its name, description and parameters' JSON schema. The action the
-    /// RavenDB agent requests and the tool <see cref="RavenAIAgent"/> runs for it then share one definition.
+    /// Turns a function into a RavenDB AI agent action with the same name, description and parameters, so you define the
+    /// action once.
     /// </summary>
-    /// <param name="function">The tool, e.g. from <see cref="AIFunctionFactory"/>; pass the same one in the agent's <c>actions</c>.</param>
-    /// <returns>The action, for <see cref="AiAgentConfiguration.Actions"/>.</returns>
+    /// <param name="function">The function, e.g. from <see cref="AIFunctionFactory"/>. Pass the same function to the
+    /// <see cref="RavenAIAgent"/>'s <c>actions</c> so it runs when the agent requests the action.</param>
+    /// <returns>An action to add to <see cref="AiAgentConfiguration.Actions"/>.</returns>
+    /// <example>
+    /// <code><![CDATA[
+    /// var sendEmail = AIFunctionFactory.Create(SendEmail, "send-email", "Sends an email to the customer");
+    /// var configuration = new AiAgentConfiguration("Support", "llm", "You are a support agent.")
+    /// {
+    ///     Actions = [sendEmail.ToAgentToolAction()],
+    /// };
+    /// var agent = configuration.ToRavenAIAgent(store, [sendEmail]);
+    /// ]]></code>
+    /// </example>
     public static AiAgentToolAction ToAgentToolAction(this AIFunction function)
     {
         ArgumentNullException.ThrowIfNull(function);
@@ -20,17 +31,17 @@ public static class RavenAIAgentExtensions
     }
 
     /// <summary>
-    /// Creates the <see cref="RavenAIAgent"/> for a RavenDB AI Agent configuration: the agent id is its
-    /// <see cref="AiAgentConfiguration.Identifier"/>, and the name is its <see cref="AiAgentConfiguration.Name"/> unless
-    /// <paramref name="options"/> sets one.
+    /// Creates a <see cref="RavenAIAgent"/> for this RavenDB AI agent configuration. The agent's name is the configuration's
+    /// <see cref="AiAgentConfiguration.Name"/>, unless <paramref name="options"/> sets one.
     /// </summary>
-    /// <param name="configuration">The RavenDB AI Agent configuration, e.g. the one passed to <c>store.AI.CreateAgentAsync</c>.</param>
+    /// <param name="configuration">The configuration, e.g. the one you passed to <c>store.AI.CreateAgentAsync</c>.</param>
     /// <param name="store">An initialized RavenDB document store.</param>
-    /// <param name="actions">Client-side implementations of the RavenDB agent's actions, matched by name and run in place.</param>
-    /// <param name="options">Optional configuration; <paramref name="options"/> itself is not changed.</param>
+    /// <param name="actions">Functions that answer the agent's actions, matched by name. Actions without a function here are
+    /// returned to you as function calls.</param>
+    /// <param name="options">Optional settings; the object you pass isn't modified.</param>
     /// <returns>The agent.</returns>
-    /// <exception cref="ArgumentException">A function in <paramref name="actions"/> has no action of the same name in
-    /// <see cref="AiAgentConfiguration.Actions"/>, so the RavenDB agent would never request it.</exception>
+    /// <exception cref="ArgumentException">A function in <paramref name="actions"/> doesn't match any action in
+    /// <see cref="AiAgentConfiguration.Actions"/>, so the agent would never call it.</exception>
     public static RavenAIAgent ToRavenAIAgent(this AiAgentConfiguration configuration, IDocumentStore store, IList<AIFunction>? actions = null, RavenAIAgentOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -51,21 +62,26 @@ public static class RavenAIAgentExtensions
     }
 }
 
-/// <summary>Files stored in RavenDB, for <see cref="RavenAIAgent"/> user messages.</summary>
+/// <summary>Sends files that are already stored in RavenDB to a <see cref="RavenAIAgent"/>.</summary>
 public static class RavenAttachment
 {
     /// <summary>
-    /// Creates the content for a document attachment that <see cref="RavenAIAgent"/> copies into the conversation on the
-    /// server (RavenDB's <c>CopyAttachmentFrom</c>), so the bytes never pass through the client.
+    /// Refers to a document's attachment, to send it to a <see cref="RavenAIAgent"/> in a user message. RavenDB copies the
+    /// file into the conversation itself, so your app never downloads it.
     /// </summary>
     /// <remarks>
-    /// It is MAF's own <see cref="HostedFileContent"/> (<see cref="HostedFileContent.FileId"/> = the document id,
-    /// <see cref="HostedFileContent.Name"/> = the attachment name, <see cref="HostedFileContent.Scope"/> marks it as a RavenDB
-    /// attachment), so messages carrying it serialize anywhere MAF stores them.
+    /// The result is a regular <see cref="HostedFileContent"/>, so a message that carries it can be saved and restored like
+    /// any other message (chat history, sessions, workflow checkpoints).
     /// </remarks>
-    /// <param name="documentId">The id of the document that holds the attachment.</param>
-    /// <param name="name">The attachment name; the copy in the conversation keeps it.</param>
-    /// <returns>The content to add to a user message.</returns>
+    /// <param name="documentId">The id of the document that has the attachment, e.g. <c>Claims/1</c>.</param>
+    /// <param name="name">The attachment's name. The model sees the file under this name.</param>
+    /// <returns>Content to add to a user message.</returns>
+    /// <example>
+    /// <code><![CDATA[
+    /// var photo = RavenAttachment.Copy("Claims/1", "damage.jpg");
+    /// await agent.RunAsync(new ChatMessage(ChatRole.User, [new TextContent("Is this damage covered?"), photo]), session);
+    /// ]]></code>
+    /// </example>
     public static HostedFileContent Copy(string documentId, string name) => new(documentId) { Name = name, Scope = CopyScope };
 
     internal const string CopyScope = "ravendb-attachment";

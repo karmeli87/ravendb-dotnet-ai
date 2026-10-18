@@ -10,13 +10,23 @@ using RavenDB.Extensions.VectorData.Internal;
 namespace RavenDB.Extensions.VectorData;
 
 /// <summary>
-/// A <c>Microsoft.Extensions.VectorData</c> <see cref="VectorStore"/> backed by a RavenDB database. Use it anywhere MAF or
-/// Semantic Kernel takes a vector store, e.g. MAF's <c>ChatHistoryMemoryProvider</c>.
+/// A vector store on a RavenDB database. Use it wherever a <see cref="VectorStore"/> is expected, e.g. Semantic Kernel or
+/// the Agent Framework's <c>ChatHistoryMemoryProvider</c>.
 /// </summary>
 /// <remarks>
-/// <see cref="string"/> vector properties are embedded by RavenDB itself (its built-in model, or an embeddings generation
-/// task), so semantic search needs no external embedding service. Records are stored as-is; see <see cref="RavenCollection{TKey, TRecord}"/>.
+/// Make a vector property a <see cref="string"/> and RavenDB turns the text into vectors itself, so you don't need an
+/// embedding service. See <see cref="RavenCollection{TKey, TRecord}"/> for how records, vectors and filters work.
 /// </remarks>
+/// <example>
+/// <code><![CDATA[
+/// var vectorStore = new RavenVectorStore(store);
+/// var hotels = vectorStore.GetCollection<string, Hotel>("Hotels");
+/// await hotels.UpsertAsync(new Hotel { HotelId = "h1", Name = "Seaside", Description = "A quiet place by the sea" });
+///
+/// await foreach (var hit in hotels.SearchAsync("calm hotel near the beach", top: 5))
+///     Console.WriteLine($"{hit.Record.Name} {hit.Score}");
+/// ]]></code>
+/// </example>
 public sealed class RavenVectorStore : VectorStore
 {
     internal const string SystemName = "ravendb";
@@ -25,9 +35,9 @@ public sealed class RavenVectorStore : VectorStore
     private readonly RavenVectorStoreOptions _options;
     private readonly VectorStoreMetadata _metadata;
 
-    /// <summary>Initializes a new instance of the <see cref="RavenVectorStore"/> class.</summary>
+    /// <summary>Creates a vector store on the document store's database.</summary>
     /// <param name="store">An initialized RavenDB document store.</param>
-    /// <param name="options">Optional configuration.</param>
+    /// <param name="options">Optional settings that apply to all its collections.</param>
     public RavenVectorStore(IDocumentStore store, RavenVectorStoreOptions? options = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -50,8 +60,8 @@ public sealed class RavenVectorStore : VectorStore
         new RavenDynamicCollection(_store, name, CreateCollectionOptions(definition));
 
     /// <inheritdoc />
-    /// <remarks>Lists the collections that have a marker document <c>VectorStoreCollections/{name}</c> (collection
-    /// <c>@VectorStoreCollections</c>), created by <c>EnsureCollectionExistsAsync</c> or the first upsert.</remarks>
+    /// <remarks>Lists the collections created through the vector store, by <c>EnsureCollectionExistsAsync</c> or a first
+    /// upsert. Other RavenDB collections in the database aren't listed.</remarks>
     public override async IAsyncEnumerable<string> ListCollectionNamesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         List<CollectionMarker> markers;
@@ -135,19 +145,27 @@ public sealed class RavenVectorStore : VectorStore
     };
 }
 
-/// <summary>Options for <see cref="RavenVectorStore"/>.</summary>
+/// <summary>Settings for a <see cref="RavenVectorStore"/>, applied to all its collections.</summary>
 public sealed class RavenVectorStoreOptions
 {
-    /// <summary>Gets or sets the database name; <see langword="null"/> uses the store's default database.</summary>
+    /// <summary>Gets or sets the database to use. <see langword="null"/> uses the document store's default database.</summary>
     public string? Database { get; set; }
 
-    /// <summary>Gets or sets an embeddings generation task id for string vector properties; <see langword="null"/> uses RavenDB's built-in model.</summary>
+    /// <summary>
+    /// Gets or sets the identifier of a RavenDB embeddings generation task that turns <see cref="string"/> vector properties
+    /// into vectors. <see langword="null"/> uses RavenDB's built-in embedding model.
+    /// </summary>
     public string? EmbeddingsTaskIdentifier { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether queries wait for indexes to catch up with recent writes.</summary>
+    /// <summary>
+    /// Gets or sets whether filtered gets and searches wait until RavenDB has indexed your latest changes. Slower, but you
+    /// always see your own writes. Getting records by key doesn't need it.
+    /// </summary>
     public bool WaitForNonStaleResults { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether searches are exact (brute force) instead of approximate (HNSW).
-    /// A vector property with <see cref="IndexKind.Flat"/> is always searched exactly.</summary>
+    /// <summary>
+    /// Gets or sets whether searches compare the query with every record (exact, slower) instead of using the vector index
+    /// (approximate, faster). Vector properties with <see cref="IndexKind.Flat"/> are always searched exactly.
+    /// </summary>
     public bool ExactSearch { get; set; }
 }

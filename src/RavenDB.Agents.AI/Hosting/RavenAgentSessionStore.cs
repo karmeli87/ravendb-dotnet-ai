@@ -6,14 +6,27 @@ using RavenDB.Agents.AI.Internal;
 namespace RavenDB.Agents.AI;
 
 /// <summary>
-/// An <see cref="AgentSessionStore"/> that persists every agent's session in RavenDB, one <see cref="PersistedAgentSession"/>
-/// document per key, so hosted agents resume conversations across restarts and machines.
+/// Saves agent sessions in RavenDB, one <see cref="PersistedAgentSession"/> document per key, so conversations continue
+/// after a restart or on another machine.
 /// </summary>
 /// <remarks>
-/// Every agent is handled the same way, as in MAF's own stores: the session is stored as the agent serializes it, and handed
-/// back to the agent to deserialize on load. A new session gets the key's partitions in its state bag, the way MAF's hosting
-/// layers add their data; a <see cref="RavenAIAgent"/> uses them as its conversation's parameters, other agents ignore them.
+/// <para>
+/// Works with any agent. A key is a session id plus optional partitions, e.g. <c>company = companies/1</c>. A new
+/// <see cref="RavenAIAgent"/> session uses the partitions as values of the agent's parameters (see
+/// <see cref="RavenAIAgentSession.Parameters"/>); other agents ignore them.
+/// </para>
+/// <para>For hosted agents, register it with <see cref="RavenHostingExtensions.WithRavenSessionStore"/>.</para>
 /// </remarks>
+/// <example>
+/// <code><![CDATA[
+/// var sessions = new RavenAgentSessionStore(store);
+/// var key = new AgentSessionStoreKey("c-123", new Dictionary<string, string> { ["company"] = "companies/1" });
+///
+/// AgentSession session = await sessions.GetOrCreateSessionAsync(agent, key);
+/// await agent.RunAsync("Where is my order?", session);
+/// await sessions.SaveSessionAsync(agent, key, session);
+/// ]]></code>
+/// </example>
 public sealed class RavenAgentSessionStore : AgentSessionStore
 {
     internal const string PartitionsStateKey = "RavenAgentSessionStore.Partitions";
@@ -21,9 +34,9 @@ public sealed class RavenAgentSessionStore : AgentSessionStore
     private readonly IDocumentStore _store;
     private readonly RavenAgentSessionStoreOptions _options;
 
-    /// <summary>Initializes a new instance of the <see cref="RavenAgentSessionStore"/> class.</summary>
+    /// <summary>Creates a session store.</summary>
     /// <param name="store">An initialized RavenDB document store.</param>
-    /// <param name="options">Optional configuration.</param>
+    /// <param name="options">Optional settings, such as the agent namespace.</param>
     public RavenAgentSessionStore(IDocumentStore store, RavenAgentSessionStoreOptions? options = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -64,7 +77,8 @@ public sealed class RavenAgentSessionStore : AgentSessionStore
     }
 
     /// <inheritdoc />
-    /// <remarks>A new session gets the key's partitions in its state bag (see <see cref="RavenAIAgentSession.Parameters"/>).</remarks>
+    /// <remarks>A new <see cref="RavenAIAgent"/> session uses the key's partitions as parameter values (see
+    /// <see cref="RavenAIAgentSession.Parameters"/>).</remarks>
     public override async ValueTask<AgentSession> GetOrCreateSessionAsync(AIAgent agent, AgentSessionStoreKey key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);
@@ -80,7 +94,11 @@ public sealed class RavenAgentSessionStore : AgentSessionStore
         return session;
     }
 
-    /// <summary>Deletes the stored session for <paramref name="key"/>, if any.</summary>
+    /// <summary>Deletes the saved session for this agent and key. Does nothing if there's none.</summary>
+    /// <param name="agent">The agent the session belongs to.</param>
+    /// <param name="key">The session's key.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task that completes when the session is deleted.</returns>
     public async Task DeleteSessionAsync(AIAgent agent, AgentSessionStoreKey key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);
@@ -98,36 +116,41 @@ public sealed class RavenAgentSessionStore : AgentSessionStore
         [_options.DocumentIdPrefix, agentName, key.SessionId, .. (key.Partitions ?? new Dictionary<string, string>()).OrderBy(p => p.Key, StringComparer.Ordinal).SelectMany(p => new[] { p.Key, p.Value })]);
 }
 
-/// <summary>Options for <see cref="RavenAgentSessionStore"/>.</summary>
+/// <summary>Settings for a <see cref="RavenAgentSessionStore"/>.</summary>
 /// <remarks>
-/// Documents are <c>{DocumentIdPrefix}/{agent}/{sessionId}</c> followed by each partition's name and value, ordered by name; default prefix
-/// <c>AgentSessions</c>.
+/// A session's document id is <c>{DocumentIdPrefix}/{agent}/{sessionId}</c>, followed by each partition's name and value in
+/// name order, e.g. <c>AgentSessions/support/c-123/company/companies/1</c>. The prefix defaults to <c>AgentSessions</c>.
 /// </remarks>
 public sealed class RavenAgentSessionStoreOptions() : RavenDocumentStoreOptions("AgentSessions")
 {
-    /// <summary>Gets or sets a stable agent namespace. Defaults to the agent's name, then its id.</summary>
+    /// <summary>
+    /// Gets or sets the agent part of the document ids. Set it so ids stay the same if the agent is renamed. Defaults to the
+    /// agent's name, or its id when it has no name.
+    /// </summary>
     public string? AgentNamespace { get; set; }
 }
 
 /// <summary>
-/// A persisted agent session (collection <c>@AgentSessions</c>): the session as its agent serialized it, plus the key it
-/// belongs to, readable and queryable in Studio.
+/// A session saved by <see cref="RavenAgentSessionStore"/>, with the key it was saved under. You can read and query these
+/// documents, e.g. in RavenDB Studio.
 /// </summary>
 public sealed class PersistedAgentSession
 {
-    /// <summary>The collection these documents are stored in, <c>@AgentSessions</c>; pass it as <c>collectionName</c> to query them.</summary>
+    /// <summary>
+    /// The collection of these documents, <c>@AgentSessions</c>. Pass it as <c>collectionName</c> when you query them.
+    /// </summary>
     public const string CollectionName = "@AgentSessions";
 
-    /// <summary>Gets or sets the agent namespace.</summary>
+    /// <summary>Gets or sets the agent the session belongs to (see <see cref="RavenAgentSessionStoreOptions.AgentNamespace"/>).</summary>
     public string Agent { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the session id from the store key.</summary>
+    /// <summary>Gets or sets the session id of the key.</summary>
     public string SessionId { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the partitions from the store key, e.g. the hosting isolation key.</summary>
+    /// <summary>Gets or sets the partitions of the key, e.g. the signed-in user when hosted.</summary>
     public Dictionary<string, string> Partitions { get; set; } = [];
 
-    /// <summary>Gets or sets the session as serialized by <see cref="AIAgent.SerializeSessionAsync"/>, stored as-is.</summary>
+    /// <summary>Gets or sets the session, in the form the agent saved it (<see cref="AIAgent.SerializeSessionAsync"/>).</summary>
     [Newtonsoft.Json.JsonConverter(typeof(SystemTextJsonConverter))]
     public JsonElement Session { get; set; }
 }

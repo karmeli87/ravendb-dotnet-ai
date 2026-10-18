@@ -5,16 +5,30 @@ using RavenDB.Agents.AI.Internal;
 namespace RavenDB.Agents.AI;
 
 /// <summary>
-/// An <see cref="AgentSkillsSource"/> that reads agent skills from RavenDB documents, so skills can be authored,
-/// versioned and rolled out centrally without redeploying agents.
+/// Loads agent skills from RavenDB documents, so you can write, change and roll out skills without redeploying your agents.
 /// </summary>
 /// <remarks>
-/// Each <see cref="PersistedAgentSkill"/> becomes an <see cref="AgentInlineSkill"/>. A stored skill whose frontmatter
-/// breaks the Agent Skills rules (e.g. edited in Studio) fails the load with RavenDB's error. MAF's
-/// <see cref="AgentSkillsProviderBuilder"/> caches sources by default, so the database is not hit on every run.
+/// <para>
+/// Each skill is a <see cref="PersistedAgentSkill"/> document. Save skills with <see cref="SaveSkillAsync"/>, or edit them
+/// in RavenDB Studio. A skill that breaks the Agent Skills rules, e.g. a name that isn't kebab-case, makes loading fail.
+/// </para>
+/// <para>
+/// Use it with <see cref="AgentSkillsProviderBuilder"/>, which caches the skills, so the database isn't read on every run.
+/// </para>
 /// </remarks>
+/// <example>
+/// <code><![CDATA[
+/// var skills = new RavenAgentSkillsSource(store);
+/// await skills.SaveSkillAsync(new PersistedAgentSkill
+/// {
+///     Frontmatter = new AgentSkillFrontmatter("refund-policy", "How to handle refund requests."),
+///     Instructions = "Refunds are allowed within 30 days.",
+/// });
+/// var provider = new AgentSkillsProviderBuilder().UseSource(skills).Build();   // add to the agent's context providers
+/// ]]></code>
+/// </example>
 /// <param name="store">An initialized RavenDB document store.</param>
-/// <param name="options">Optional configuration.</param>
+/// <param name="options">Optional settings, such as the document id prefix.</param>
 public sealed class RavenAgentSkillsSource(IDocumentStore store, RavenAgentSkillsSourceOptions? options = null) : AgentSkillsSource
 {
     private readonly IDocumentStore _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -28,7 +42,10 @@ public sealed class RavenAgentSkillsSource(IDocumentStore store, RavenAgentSkill
         return [.. skills.Where(s => !s.Disabled).Select(ToSkill)];
     }
 
-    /// <summary>Validates a skill, then stores or replaces it as <c>{DocumentIdPrefix}/{skill name}</c>.</summary>
+    /// <summary>Checks a skill against the Agent Skills rules and saves it, replacing any skill with the same name.</summary>
+    /// <param name="skill">The skill. Its document id is <c>{DocumentIdPrefix}/{skill name}</c>.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task that completes when the skill is saved.</returns>
     public async Task SaveSkillAsync(PersistedAgentSkill skill, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(skill);
@@ -52,42 +69,46 @@ public sealed class RavenAgentSkillsSource(IDocumentStore store, RavenAgentSkill
     }
 }
 
-/// <summary>Options for <see cref="RavenAgentSkillsSource"/>.</summary>
+/// <summary>Settings for a <see cref="RavenAgentSkillsSource"/>.</summary>
 /// <remarks>
-/// Documents are <c>{DocumentIdPrefix}/{skill name}</c>; default prefix <c>AgentSkills</c>. <see cref="RavenDocumentStoreOptions.TimeToLive"/>
-/// applies to skills saved with <see cref="RavenAgentSkillsSource.SaveSkillAsync"/> (e.g. temporary or trial skills).
+/// Each skill is the document <c>{DocumentIdPrefix}/{skill name}</c>; the prefix defaults to <c>AgentSkills</c>. A
+/// <see cref="RavenDocumentStoreOptions.TimeToLive"/> applies to skills saved with <see cref="RavenAgentSkillsSource.SaveSkillAsync"/>,
+/// e.g. for trial skills.
 /// </remarks>
 public sealed class RavenAgentSkillsSourceOptions() : RavenDocumentStoreOptions("AgentSkills");
 
-/// <summary>An agent skill stored in RavenDB (collection <c>@AgentSkills</c>, ids <c>{DocumentIdPrefix}/{skill name}</c>).</summary>
+/// <summary>An agent skill stored in RavenDB, read by <see cref="RavenAgentSkillsSource"/>.</summary>
 public sealed class PersistedAgentSkill
 {
-    /// <summary>The collection these documents are stored in, <c>@AgentSkills</c>; pass it as <c>collectionName</c> to query them.</summary>
+    /// <summary>
+    /// The collection of these documents, <c>@AgentSkills</c>. Pass it as <c>collectionName</c> when you query them.
+    /// </summary>
     public const string CollectionName = "@AgentSkills";
 
-    /// <summary>Gets or sets the skill's frontmatter (name, description, license, compatibility, allowed tools, metadata),
-    /// as defined by the Agent Skills specification.</summary>
+    /// <summary>
+    /// Gets or sets the skill's name, description and other details defined by the Agent Skills specification.
+    /// </summary>
     public required AgentSkillFrontmatter Frontmatter { get; set; }
 
-    /// <summary>Gets or sets the skill instructions (the SKILL.md body).</summary>
+    /// <summary>Gets or sets the instructions the model follows when it uses the skill (the body of a SKILL.md file).</summary>
     public required string Instructions { get; set; }
 
-    /// <summary>Gets or sets static resources the model can read on demand.</summary>
+    /// <summary>Gets or sets extra text the model can read when it needs it, e.g. a price list.</summary>
     public List<PersistedAgentSkillResource> Resources { get; set; } = [];
 
-    /// <summary>Gets or sets a value indicating whether the skill is hidden from agents.</summary>
+    /// <summary>Gets or sets whether the skill is hidden from agents, e.g. while you work on it.</summary>
     public bool Disabled { get; set; }
 }
 
-/// <summary>A static resource of a <see cref="PersistedAgentSkill"/>.</summary>
+/// <summary>Extra text that a <see cref="PersistedAgentSkill"/> offers to the model.</summary>
 public sealed class PersistedAgentSkillResource
 {
-    /// <summary>Gets or sets the resource name.</summary>
+    /// <summary>Gets or sets the name the instructions use to refer to the resource.</summary>
     public required string Name { get; set; }
 
-    /// <summary>Gets or sets the resource description.</summary>
+    /// <summary>Gets or sets a short description that tells the model what the resource contains.</summary>
     public string? Description { get; set; }
 
-    /// <summary>Gets or sets the resource content.</summary>
+    /// <summary>Gets or sets the text.</summary>
     public required string Content { get; set; }
 }

@@ -102,4 +102,21 @@ public class CollectionTests : RavenTestBase
         Assert.True(await session.Advanced.ExistsAsync("Hotels/eu/paris/1"));
         Assert.True(await session.Advanced.ExistsAsync("Things/42"));
     }
+
+    [Fact]
+    public async Task Filters_may_only_use_properties_of_the_definition()
+    {
+        var store = new RavenVectorStore(Store, new RavenVectorStoreOptions { WaitForNonStaleResults = true });
+        var things = store.GetDynamicCollection("Things", new()
+        {
+            Properties = [new VectorStoreKeyProperty("Key", typeof(int)), new VectorStoreDataProperty("Name", typeof(string)), new VectorStoreVectorProperty("Vec", typeof(float[]), 3)],
+        });
+        await things.UpsertAsync(new Dictionary<string, object?> { ["Key"] = 1, ["Name"] = "a", ["Vec"] = new[] { 1f, 0f, 0f } });
+
+        Assert.Single(await things.GetAsync(r => (string)r["Name"]! == "a", 5).ToListAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await things.GetAsync(r => (string)r["Nmae"]! == "a", 5).ToListAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await things.SearchAsync(new[] { 1f, 0f, 0f }, 1, new() { Filter = r => (string)r["Name = 'x'; DROP"]! == "" }).ToListAsync());
+        await Assert.ThrowsAsync<InvalidCastException>(async () => await things.GetAsync(r => (int)r["Name"]! == 1, 5).ToListAsync());
+    }
 }

@@ -18,40 +18,44 @@ using RavenDB.Extensions.VectorData.Internal;
 namespace RavenDB.Extensions.VectorData;
 
 /// <summary>
-/// A <see cref="VectorStoreCollection{TKey, TRecord}"/> backed by a RavenDB collection.
+/// A vector store collection that keeps its records as documents of a RavenDB collection.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Records are stored as-is with the RavenDB client under the document id <c>{collection}/{key}</c>. Record types with
-/// an <c>Id</c> property are rejected, since RavenDB maps it to the document id. Vectors are <c>float[]</c>,
-/// <see cref="ReadOnlyMemory{T}"/> of <see cref="float"/> or <see cref="Embedding{T}"/> of <see cref="float"/> (all stored as JSON arrays; the
-/// last two need <see cref="RavenVectorDataDocumentStoreExtensions.UseVectorData{TStore}"/> on the store), or
-/// <see cref="string"/> properties that RavenDB embeds itself (its built-in model, or an embeddings generation task via
-/// <see cref="RavenCollectionOptions.EmbeddingsTaskIdentifier"/>); client-side embedding generators and MEVD storage names
-/// are rejected. To rename a field, use <c>[JsonProperty("...")]</c>, which RavenDB honors for storing and querying.
-/// </para>
-/// <para>
-/// Filters go to RavenDB's LINQ provider as-is, with exact (case-sensitive) comparisons; <c>r =&gt; true</c> reads everything.
-/// Shapes RavenDB doesn't support fail with RavenDB's error: for "field is one of these values" write
-/// <c>r.Field.In(values)</c>, and for "array field has any of these values" <c>r.Tags.ContainsAny(values)</c>
-/// (RavenDB's own extensions in <c>Raven.Client.Documents.Linq</c>) instead of <c>values.Contains(...)</c>. Stored vectors
-/// (arrays) come back only when
-/// <see cref="RecordRetrievalOptions.IncludeVectors"/> is <see langword="true"/>; otherwise RavenDB leaves them out (the query
-/// selects every other field, and gets by key query the ids). Text that RavenDB embeds itself always comes back.
-/// </para>
-/// <para>
-/// Gets by key are ACID. Filtered gets and searches use RavenDB auto-indexes, which are eventually consistent; set
-/// <see cref="RavenCollectionOptions.WaitForNonStaleResults"/> to read your own writes.
-/// </para>
-/// <para>
-/// <see cref="VectorSearchResult{TRecord}.Score"/> is RavenDB's <c>@index-score</c> (cosine similarity), reported only
-/// when the database setting <c>Indexing.Corax.IncludeDocumentScore</c> is <see langword="true"/>; otherwise it is
-/// <see langword="null"/>. <see cref="VectorSearchOptions{TRecord}.ScoreThreshold"/> is passed to RavenDB as the minimum
-/// similarity; <see langword="null"/> uses the database's <c>Indexing.Corax.VectorSearch.DefaultMinimumSimilarity</c>.
-/// </para>
+/// <para><b>Records</b></para>
+/// <list type="bullet">
+/// <item><description>Each record is the document <c>{collection}/{key}</c>, saved as it is, so you can read and query it
+/// like any other RavenDB document. Keys are case-insensitive.</description></item>
+/// <item><description>A record type can't have a property named <c>Id</c>, since RavenDB uses it for the document id.</description></item>
+/// <item><description>To store a property under another field name, use <c>[JsonProperty("name")]</c>.</description></item>
+/// </list>
+/// <para><b>Vectors</b></para>
+/// <list type="bullet">
+/// <item><description>Store your own vectors as <c>float[]</c>, <c>ReadOnlyMemory&lt;float&gt;</c> or <c>Embedding&lt;float&gt;</c>.
+/// The last two need <see cref="RavenVectorDataDocumentStoreExtensions.UseVectorData{TStore}"/> when you set up the
+/// document store.</description></item>
+/// <item><description>Or make the vector property a <see cref="string"/>: RavenDB turns the text into a vector itself, with
+/// its built-in model or an embeddings generation task (<see cref="RavenCollectionOptions.EmbeddingsTaskIdentifier"/>).
+/// Embedding generators in your app aren't supported.</description></item>
+/// <item><description>Stored vectors are returned only when you ask for them (<see cref="RecordRetrievalOptions.IncludeVectors"/>).</description></item>
+/// </list>
+/// <para><b>Filters</b></para>
+/// <list type="bullet">
+/// <item><description>Filters are RavenDB LINQ queries, and comparisons are case-sensitive.</description></item>
+/// <item><description>For "is one of these values", write <c>r.Field.In(values)</c>; for "has any of these values", write
+/// <c>r.Tags.ContainsAny(values)</c> (both from <c>Raven.Client.Documents.Linq</c>).</description></item>
+/// <item><description>A property that isn't part of the record definition throws <see cref="InvalidOperationException"/>.</description></item>
+/// </list>
+/// <para><b>Consistency and scores</b></para>
+/// <list type="bullet">
+/// <item><description>Getting records by key always returns the latest data. Filtered gets and searches go through indexes
+/// that update in the background; set <see cref="RavenCollectionOptions.WaitForNonStaleResults"/> to see your own changes
+/// right away.</description></item>
+/// <item><description><see cref="VectorSearchResult{TRecord}.Score"/> is the cosine similarity. RavenDB reports it only
+/// when the database setting <c>Indexing.Corax.IncludeDocumentScore</c> is <c>true</c>; otherwise it's <see langword="null"/>.</description></item>
+/// </list>
 /// </remarks>
-/// <typeparam name="TKey">The key type. The document id is <c>{collection}/{key}</c>, with the key formatted in the invariant
-/// culture; a null or empty string key is rejected. Keys are case-insensitive, as RavenDB document ids are.</typeparam>
+/// <typeparam name="TKey">The key type, e.g. <see cref="string"/>, <see cref="int"/> or <see cref="Guid"/>. Empty string keys
+/// aren't allowed.</typeparam>
 /// <typeparam name="TRecord">The record type.</typeparam>
 #pragma warning disable CA1711 // Identifiers should not have incorrect suffix: matches the MEVD naming convention.
 public class RavenCollection<TKey, TRecord> : VectorStoreCollection<TKey, TRecord>, IKeywordHybridSearchable<TRecord>
@@ -66,10 +70,10 @@ public class RavenCollection<TKey, TRecord> : VectorStoreCollection<TKey, TRecor
     private readonly Dictionary<PropertyModel, string> _fieldNames;
     private readonly string[]? _fieldsWithoutVectors;
 
-    /// <summary>Initializes a new instance of the <see cref="RavenCollection{TKey, TRecord}"/> class.</summary>
+    /// <summary>Creates a collection. Usually you get one from <see cref="RavenVectorStore.GetCollection{TKey, TRecord}"/> instead.</summary>
     /// <param name="store">An initialized RavenDB document store.</param>
-    /// <param name="name">The RavenDB collection name.</param>
-    /// <param name="options">Optional configuration.</param>
+    /// <param name="name">The RavenDB collection name, e.g. <c>Hotels</c>.</param>
+    /// <param name="options">Optional settings.</param>
     [RequiresDynamicCode("This constructor is incompatible with NativeAOT. For dynamic mapping use RavenDynamicCollection.")]
     [RequiresUnreferencedCode("This constructor is incompatible with trimming. For dynamic mapping use RavenDynamicCollection.")]
     public RavenCollection(IDocumentStore store, string name, RavenCollectionOptions? options = null)
@@ -183,6 +187,7 @@ public class RavenCollection<TKey, TRecord> : VectorStoreCollection<TKey, TRecor
         IQueryable<TRecord> filtered = collection;
         if (filter.Body is not ConstantExpression { Value: true })
         {
+            RavenFilterValidator.Validate(filter, _model);
             filtered = collection.Where(filter, exact: true);
         }
 
@@ -259,8 +264,8 @@ public class RavenCollection<TKey, TRecord> : VectorStoreCollection<TKey, TRecor
     }
 
     /// <summary>
-    /// Searches by vector and by keywords in a full-text indexed property: every vector match is returned, and records that
-    /// also match the keywords rank higher (RavenDB adds the full-text relevance to the vector similarity).
+    /// Searches by vector and by keywords together: you get the vector matches, with the records whose full-text property
+    /// also contains the keywords ranked first.
     /// </summary>
     /// <inheritdoc cref="IKeywordHybridSearchable{TRecord}.HybridSearchAsync{TInput}(TInput, ICollection{string}, int, HybridSearchOptions{TRecord}?, CancellationToken)"/>
     public async IAsyncEnumerable<VectorSearchResult<TRecord>> HybridSearchAsync<TInput>(TInput searchValue, ICollection<string> keywords, int top, HybridSearchOptions<TRecord>? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -302,6 +307,7 @@ public class RavenCollection<TKey, TRecord> : VectorStoreCollection<TKey, TRecor
             return query.ToAsyncDocumentQuery();
         }
 
+        RavenFilterValidator.Validate(filter, _model);
         return query.Where(filter, exact: true).ToAsyncDocumentQuery().AndAlso();
     }
 
@@ -462,16 +468,23 @@ public class RavenCollection<TKey, TRecord> : VectorStoreCollection<TKey, TRecor
     };
 }
 
-/// <summary>A <see cref="RavenCollection{TKey, TRecord}"/> over <see cref="Dictionary{TKey, TValue}"/> records, defined at runtime.</summary>
-/// <remarks>Values of the definition's properties come back typed as the definition says; other fields come back JSON-typed.</remarks>
+/// <summary>
+/// A collection whose records are dictionaries, with properties you describe at runtime instead of in a class. Get one from
+/// <see cref="RavenVectorStore.GetDynamicCollection"/>.
+/// </summary>
+/// <remarks>
+/// Values of the properties in the definition come back as the types the definition gives them. Other fields of the document
+/// come back as plain JSON values (strings, numbers, booleans).
+/// </remarks>
 #pragma warning disable CA1711
 public sealed class RavenDynamicCollection : RavenCollection<object, Dictionary<string, object?>>
 #pragma warning restore CA1711
 {
-    /// <summary>Initializes a new instance of the <see cref="RavenDynamicCollection"/> class.</summary>
+    /// <summary>Creates a dynamic collection.</summary>
     /// <param name="store">An initialized RavenDB document store.</param>
-    /// <param name="name">The RavenDB collection name.</param>
-    /// <param name="options">Configuration; <see cref="VectorStoreCollectionOptions.Definition"/> is required.</param>
+    /// <param name="name">The RavenDB collection name, e.g. <c>Notes</c>.</param>
+    /// <param name="options">Settings; <see cref="VectorStoreCollectionOptions.Definition"/>, which describes the record's
+    /// properties, is required.</param>
     public RavenDynamicCollection(IDocumentStore store, string name, RavenCollectionOptions options)
         : this(
             store,
@@ -507,23 +520,33 @@ public sealed class RavenDynamicCollection : RavenCollection<object, Dictionary<
     }
 }
 
-/// <summary>Options for <see cref="RavenCollection{TKey, TRecord}"/>.</summary>
+/// <summary>Settings for a <see cref="RavenCollection{TKey, TRecord}"/>.</summary>
 public sealed class RavenCollectionOptions : VectorStoreCollectionOptions
 {
-    /// <summary>Gets or sets the database name; <see langword="null"/> uses the store's default database.</summary>
+    /// <summary>Gets or sets the database to use. <see langword="null"/> uses the document store's default database.</summary>
     public string? Database { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether queries wait for indexes to catch up with recent writes.</summary>
+    /// <summary>
+    /// Gets or sets whether filtered gets and searches wait until RavenDB has indexed your latest changes. Slower, but you
+    /// always see your own writes. Getting records by key doesn't need it.
+    /// </summary>
     public bool WaitForNonStaleResults { get; set; }
 
-    /// <summary>Gets or sets the HNSW candidates per search; <see langword="null"/> uses the database's
-    /// <c>Indexing.Corax.VectorSearch.DefaultNumberOfCandidatesForQuerying</c> (16 by default), which caps the results.</summary>
+    /// <summary>
+    /// Gets or sets how many candidates each search considers. More candidates find better matches but take longer, and a
+    /// search never returns more results than this. <see langword="null"/> uses the database's default (16).
+    /// </summary>
     public int? NumberOfCandidates { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether searches are exact (brute force) instead of approximate (HNSW).
-    /// A vector property with <see cref="IndexKind.Flat"/> is always searched exactly.</summary>
+    /// <summary>
+    /// Gets or sets whether searches compare the query with every record (exact, slower) instead of using the vector index
+    /// (approximate, faster). Vector properties with <see cref="IndexKind.Flat"/> are always searched exactly.
+    /// </summary>
     public bool ExactSearch { get; set; }
 
-    /// <summary>Gets or sets an embeddings generation task id for string vector properties; <see langword="null"/> uses RavenDB's built-in model.</summary>
+    /// <summary>
+    /// Gets or sets the identifier of a RavenDB embeddings generation task that turns <see cref="string"/> vector properties
+    /// into vectors. <see langword="null"/> uses RavenDB's built-in embedding model.
+    /// </summary>
     public string? EmbeddingsTaskIdentifier { get; set; }
 }

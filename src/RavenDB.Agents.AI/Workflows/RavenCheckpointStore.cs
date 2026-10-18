@@ -9,16 +9,24 @@ using RavenDB.Agents.AI.Internal;
 namespace RavenDB.Agents.AI;
 
 /// <summary>
-/// A <see cref="JsonCheckpointStore"/> that keeps workflow checkpoints in RavenDB, so long-running workflows
-/// survive restarts and can be resumed from any checkpoint.
+/// Saves workflow checkpoints in RavenDB, so a long-running workflow can resume after a restart, on any machine, from
+/// any of its checkpoints.
 /// </summary>
 /// <remarks>
-/// Use with <c>CheckpointManager.CreateJson(new RavenCheckpointStore(store))</c>.
-/// Checkpoints of one workflow session share an id prefix, so listing them is an id-prefix query that needs no index.
-/// The checkpoint payload is stored Brotli-compressed as the document's <c>value.json.br</c> attachment: MAF checkpoints
-/// repeat most of their content (a sub-workflow's checkpoints are copied into every parent checkpoint), so they compress
-/// well; the document keeps only the index fields.
+/// Each checkpoint is a <see cref="WorkflowCheckpoint"/> document. Its content is compressed into the document's
+/// <c>value.json.br</c> attachment, since checkpoints are large and repetitive.
 /// </remarks>
+/// <example>
+/// <code><![CDATA[
+/// var checkpointStore = new RavenCheckpointStore(store);
+/// var checkpoints = CheckpointManager.CreateJson(checkpointStore);
+/// await using var run = await InProcessExecution.RunAsync(workflow, input, checkpoints, "order-1234");
+///
+/// // After a restart: resume from the latest checkpoint.
+/// var last = (await checkpointStore.RetrieveIndexAsync("order-1234")).Last();
+/// await using var resumed = await InProcessExecution.ResumeAsync(workflow, last, checkpoints);
+/// ]]></code>
+/// </example>
 public sealed class RavenCheckpointStore : JsonCheckpointStore
 {
     private const string ValueAttachment = "value.json.br";
@@ -26,9 +34,9 @@ public sealed class RavenCheckpointStore : JsonCheckpointStore
     private readonly IDocumentStore _store;
     private readonly RavenCheckpointStoreOptions _options;
 
-    /// <summary>Initializes a new instance of the <see cref="RavenCheckpointStore"/> class.</summary>
+    /// <summary>Creates a checkpoint store.</summary>
     /// <param name="store">An initialized RavenDB document store.</param>
-    /// <param name="options">Optional configuration.</param>
+    /// <param name="options">Optional settings, such as how long checkpoints are kept.</param>
     public RavenCheckpointStore(IDocumentStore store, RavenCheckpointStoreOptions? options = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -101,31 +109,36 @@ public sealed class RavenCheckpointStore : JsonCheckpointStore
     }
 }
 
-/// <summary>Options for <see cref="RavenCheckpointStore"/>.</summary>
-/// <remarks>Documents are <c>{DocumentIdPrefix}/{sessionId}/{checkpointId}</c>; default prefix <c>WorkflowCheckpoints</c>.</remarks>
+/// <summary>Settings for a <see cref="RavenCheckpointStore"/>.</summary>
+/// <remarks>
+/// Each checkpoint is the document <c>{DocumentIdPrefix}/{sessionId}/{checkpointId}</c>; the prefix defaults to
+/// <c>WorkflowCheckpoints</c>.
+/// </remarks>
 public sealed class RavenCheckpointStoreOptions() : RavenDocumentStoreOptions("WorkflowCheckpoints");
 
 /// <summary>
-/// A workflow checkpoint document (collection <c>@WorkflowCheckpoints</c>). The payload is its Brotli-compressed
-/// <c>value.json.br</c> attachment.
+/// A checkpoint saved by <see cref="RavenCheckpointStore"/>. The document holds the checkpoint's details; its content is the
+/// compressed <c>value.json.br</c> attachment.
 /// </summary>
 public sealed class WorkflowCheckpoint
 {
-    /// <summary>The collection these documents are stored in, <c>@WorkflowCheckpoints</c>; pass it as <c>collectionName</c> to query them.</summary>
+    /// <summary>
+    /// The collection of these documents, <c>@WorkflowCheckpoints</c>. Pass it as <c>collectionName</c> when you query them.
+    /// </summary>
     public const string CollectionName = "@WorkflowCheckpoints";
 
     /// <summary>Gets or sets the document id, <c>{prefix}/{sessionId}/{checkpointId}</c>.</summary>
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the workflow session id.</summary>
+    /// <summary>Gets or sets the id of the workflow run (the session id you passed when you started it).</summary>
     public string SessionId { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the checkpoint id (time-ordered).</summary>
+    /// <summary>Gets or sets the checkpoint id. Ids sort in the order the checkpoints were created.</summary>
     public string CheckpointId { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the parent checkpoint id, if any.</summary>
+    /// <summary>Gets or sets the id of the checkpoint this one follows, if any.</summary>
     public string? ParentCheckpointId { get; set; }
 
-    /// <summary>Gets or sets when the checkpoint was created.</summary>
+    /// <summary>Gets or sets when the checkpoint was created (UTC).</summary>
     public DateTime CreatedAt { get; set; }
 }
